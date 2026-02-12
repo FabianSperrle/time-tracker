@@ -37,3 +37,17 @@
 - **KSP Caching**: Bei Build-Fehlern mit KSP → `./gradlew clean` hilft oft
 - **Test Execution Error**: "Failed to load JUnit Platform" → JUnit 5 + Vintage Engine + Platform Launcher nötig
 - **JUnit 4 + 5**: Vintage Engine erlaubt beide parallel → `testRuntimeOnly(libs.junit.vintage.engine)`
+
+## Robolectric Testing (F04)
+- **JUnit 4 required**: Projekt nutzt `@RunWith(RobolectricTestRunner::class)` statt JUnit 5 Extension
+- **Android Framework Klassen**: NotificationChannel, NotificationManager müssen mit Robolectric getestet werden
+- **Hilt + BroadcastReceiver**: Schwer zu testen in Unit Tests → Tests auf Constants und basic Instantiation beschränken
+- **Service Lifecycle**: Vollständige Service-Tests limitiert in Robolectric → `Robolectric.buildService()` für basics
+- **Async Testing**: BroadcastReceiver mit eigener CoroutineScope schwer zu verifizieren → Acceptance auf real device
+
+## Foreground Service Patterns (F04)
+- **State Observation**: Service observiert `StateFlow` in eigenem `CoroutineScope`
+- **Lifecycle Management**: Service stoppt sich selbst bei `TrackingState.Idle`
+- **Notification Updates**: Periodic Updates nur bei TRACKING, nicht bei PAUSED (Battery Saving)
+- **PendingIntent Flags**: Immer `FLAG_IMMUTABLE` für Android 12+ (targetSdk 31+)
+- **Manifest**: `foregroundServiceType="location"` erforderlich für Location-based Services (Android 14+)

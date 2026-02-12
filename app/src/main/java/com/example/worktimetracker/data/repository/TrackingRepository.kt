@@ -39,6 +39,10 @@ class TrackingRepository @Inject constructor(
         return trackingDao.getActiveEntry()
     }
 
+    suspend fun hasCompletedOfficeCommuteToday(): Boolean {
+        return trackingDao.hasCompletedOfficeCommute(LocalDate.now())
+    }
+
     suspend fun startTracking(type: TrackingType, autoDetected: Boolean): TrackingEntry {
         val entry = TrackingEntry(
             date = LocalDate.now(),
@@ -60,13 +64,14 @@ class TrackingRepository @Inject constructor(
         }
     }
 
-    suspend fun startPause(entryId: String) {
+    suspend fun startPause(entryId: String): String {
         val pause = Pause(
             entryId = entryId,
             startTime = LocalDateTime.now(),
             endTime = null
         )
         pauseDao.insert(pause)
+        return pause.id
     }
 
     suspend fun stopPause(entryId: String) {

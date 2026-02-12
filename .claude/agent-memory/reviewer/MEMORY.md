@@ -89,3 +89,113 @@
 1. **@Transaction Queries für Relationen**: `@Transaction` + `@Relation` in DAO ist effizient und lazy, besser als `.first()` in Repository
 2. **TrackingEntryWithPauses als Aggregat**: @Embedded + @Relation Pattern korrekt umgesetzt
 3. **TypeConverters**: ISO-8601 Strings für LocalDate/LocalDateTime (standardkonform)
+
+## F03 — Tracking State Machine
+
+### Review erfolgreich abgeschlossen (Iteration 2 - APPROVED)
+
+**Status:** APPROVED - Alle 3 Findings aus Iteration 1 behoben, 40+ Tests grün, Build SUCCESS.
+
+### Findings Iteration 1 → Iteration 2 (Behoben)
+1. **CRITICAL - TrackingNotificationManager entfernt**: Constructor reduziert auf 3 Parameter (Repository, SettingsProvider, StateStorage). Keine Imports mehr für CoroutineScope/Dispatchers/SupervisorJob.
+2. **MAJOR - "Bereits im Büro gewesen" Check implementiert**: DAO-Query `hasCompletedOfficeCommute(date)` mit EXISTS. Repository-Methode `hasCompletedOfficeCommuteToday()`. State Machine prüft in `handleGeofenceEnteredWhileTracking()` vor stopTracking(). Zwei neue Tests: mit/ohne Prior Office Visit.
+3. **MINOR - CoroutineScope Lifecycle optimiert**: Init-Block entfernt. `restoreState()` jetzt public suspend fun mit KDoc. Aufrufer muss Lifecycle-Management übernehmen (sauberer design).
+
+### Verifiziert Iteration 2
+- ✓ Build: clean build SUCCESS (11s)
+- ✓ Tests: 40+ Unit Tests grün (17 TrackingStateMachine + 11 TrackingStateStorage + 12+ Repository)
+- ✓ APK: erfolgreich erstellt
+- ✓ Alle 6 Akzeptanzkriterien erfüllt
+- ✓ Keine Speicherlecks mehr (CoroutineScope entfernt)
+- ✓ Repository Pattern und Hilt DI korrekt
+
+### Patterns erkannt
+1. **Sealed Classes für State Machine**: Elegant und type-safe
+2. **Nested Handler Methods**: handleGeofenceEnteredWhileIdle, handleTracking, etc. - gute Separation
+3. **Turbine für Flow Testing**: Test nutzt Turbine richtig (awaitItem, expectNoEvents)
+4. **Validation in init**: TimeWindow init-Block validiert start < end (siehe TimeWindow.kt)
+5. **Query mit EXISTS**: Effizient für Existence Checks statt count() oder first()
+
+## F04 — Foreground Service & Notifications
+
+### Review Iteration 2 - APPROVED ✓
+
+**Status:** APPROVED - Alle 5 Findings aus Iteration 1 erfolgreich behoben. 26/26 Service-Tests grün, Build SUCCESS.
+
+### Wichtige Patterns implementiert
+1. **TrackingServiceManager als Application-Level Singleton:**
+   - Observiert StateFlow mit `distinctUntilChanged()` → keine Duplikate
+   - Startet Service automatisch bei State-Wechsel (Idle → Tracking/Paused)
+   - Wird in App.onCreate() initialisiert via `startObserving()`
+   - Hilt-Injection: `@ServiceDispatcher` Qualifier für TestDispatcher-Kompatibilität
+
+2. **Job-Management für Memory Safety:**
+   - Private `stateJob` und `updateJob` für explizite Lifecycle-Bindung
+   - Schutz vor Mehrfach-Initialisierung: `if (stateJob?.isActive == true) return` in onCreate()
+   - Cleanup in onDestroy(): beide Jobs cancelt, serviceScope cancelt
+   - **Pattern:** Private nullable Job? mit expliziter Verwaltung
+
+3. **BroadcastReceiver mit goAsync():**
+   - Ersetzt unverwaltete `CoroutineScope(Dispatchers.Default).launch`
+   - `goAsync()` + PendingResult + try/finally
+   - **Benefit:** Verhindert ANR, Best Practice für async BroadcastReceiver
+
+4. **Test-Pattern für Services:**
+   - Robolectric hat Limits: `startForeground()` nicht vollständig simuliert
+   - Lösung: `spyk<NotificationManager>()` für verfügbare Verifikation
+   - `runTest { }` für async-Szenarien
+   - **Wichtig:** Kommentare dokumentieren Limitierungen (Transparenz statt Fake-Tests)
+
+### Verifiziert Iteration 2
+- ✓ TrackingServiceManager: 5/5 Tests grün
+- ✓ TrackingForegroundService: 7/7 Tests grün (vorher 3)
+- ✓ NotificationActionReceiver: 4/4 Tests + goAsync() implementiert
+- ✓ BootCompletedReceiver: 3/3 Tests
+- ✓ NotificationChannelManager: 7/7 Tests
+- ✓ Build: SUCCESS, APK erstellt
+- ✓ AC #1, #2, #3, #7 erfüllt
+
+### Review Iteration 1 - CHANGES_REQUESTED
+
+**Status:** CHANGES_REQUESTED - 5 Findings (1 CRITICAL, 3 MAJOR, 1 MINOR)
+
+### Kritische Findings
+1. **CRITICAL - AC #1 nicht erfüllt**: Service wird nicht beim normalen Tracking-Start gestartet
+   - AC besagt "Foreground Service startet bei Tracking-Beginn" aber nur BootCompletedReceiver hat `startForegroundService()` Code
+   - Service wird beobachtet (StateFlow.collectLatest), aber never started außer nach Boot
+   - Fehlt: Application-Context Component (TrackingServiceManager) die auf StateMachine.state horcht
+
+2. **MAJOR - Memory Leak Risk in CoroutineScope**:
+   - Service erzeugt `CoroutineScope(Dispatchers.Default + Job())` in onCreate()
+   - `collectLatest {}` läuft endlos bis onDestroy()
+   - Sollte ggf. Job-Initialisierung checken gegen Mehrfach-onCreate()
+   - Oder: Scope in onStartCommand() statt onCreate() initialisieren
+
+3. **MAJOR - Schwache Tests (qualitativ)**:
+   - NotificationChannelManagerTest: 7 Tests grün aber testen nur Konstanten
+   - TrackingForegroundServiceTest: 3 Tests, checken nicht ob `startForeground()` aufgerufen wurde
+   - NotificationActionReceiverTest: 4 Tests, only constants
+   - BootCompletedReceiverTest: 3 Tests, testen nicht echtes Verhalten
+   - Robolectric limitation: Würde `spyk<NotificationManager>` + `verify {}` brauchen
+
+4. **MAJOR - Fehlende Test-Abdeckung AC #2**: 60-Sekunden Notification Update wird nicht getestet
+   - Kein Test für `startPeriodicUpdates()` oder `updateNotification()`
+   - Würde `runTest { advanceTimeBy(60_000) }` brauchen
+   - Aktuell erkannt: Tests als Dokumentation, echte Validierung auf realem Gerät
+
+5. **MINOR - NotificationActionReceiver CoroutineScope nicht idiomatisch**:
+   - `CoroutineScope(Dispatchers.Default).launch { }` für jeden Broadcast
+   - Sollte `goAsync()` mit PendingResult verwenden (Android Q+) oder WorkManager
+   - Funktioniert aber für kurze Fire-and-Forget Operation
+
+### Verifiziert Iteration 1
+- ✓ Build: SUCCESS, APK erstellt (28MB)
+- ✓ Tests: 17 Service-Tests grün (aber qualitativ schwach)
+- ✓ Manifest: Alle Receiver + Service registered
+- ✓ Integration: NotificationChannelManager in WorkTimeTrackerApp.onCreate()
+
+### Lessons für F04
+1. **AC-Markierung vs Implementation**: AC als [x] markiert aber Code fehlt völlig - wurde übersehen?
+2. **Service-Lifecycle**: Service wird via `startForegroundService()` gestartet, müsste zentral in App-Context komponente erfolgen
+3. **Test-Anforderungen für Services**: Robolectric hat Limits - aktuelle Tests sind placeholder
+4. **Dokumentiert aber nicht implementiert**: "Nächste Schritte" erwähnt "UI-Integration", aber AC #1 sollte bereits done sein

@@ -3,6 +3,16 @@
 Android-App zur automatischen Arbeitszeiterfassung.
 Kotlin, Jetpack Compose, Room, BLE (AltBeacon), Geofencing (Google Play Services).
 
+## Arbeitsmodus
+Für jedes freigeschaltete Feature:
+   - @developer aufrufen (Spec: docs/features/{feature_id}.md)
+   - @reviewer aufrufen
+   - Review-Loop max. 5 Iterationen
+   - Nach Abschluss: APK bauen (builds/v{VERSION}.apk)
+   - Task als DONE markieren
+   - Abhängige Tasks automatisch freischalten
+   - Parallelisieren wo möglich (siehe TASKS.md / Wellen)
+
 ## Architektur
 - MVVM + Repository Pattern
 - minSdk 31 (Android 12+)

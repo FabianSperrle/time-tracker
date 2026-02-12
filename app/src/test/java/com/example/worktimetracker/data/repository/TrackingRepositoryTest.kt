@@ -159,15 +159,16 @@ class TrackingRepositoryTest {
     }
 
     @Test
-    fun `startPause creates new pause for entry`() = runTest {
+    fun `startPause creates new pause for entry and returns pause ID`() = runTest {
         val pauseSlot = slot<Pause>()
         coEvery { pauseDao.insert(capture(pauseSlot)) } returns Unit
 
-        repository.startPause("entry-1")
+        val pauseId = repository.startPause("entry-1")
 
         val captured = pauseSlot.captured
         assertEquals("entry-1", captured.entryId)
         assertNull(captured.endTime)
+        assertEquals(captured.id, pauseId)
         coVerify { pauseDao.insert(any()) }
     }
 
@@ -224,5 +225,25 @@ class TrackingRepositoryTest {
         repository.deleteEntry(entry)
 
         coVerify { trackingDao.delete(entry) }
+    }
+
+    @Test
+    fun `hasCompletedOfficeCommuteToday returns true when completed commute exists`() = runTest {
+        coEvery { trackingDao.hasCompletedOfficeCommute(LocalDate.now()) } returns true
+
+        val result = repository.hasCompletedOfficeCommuteToday()
+
+        assertTrue(result)
+        coVerify { trackingDao.hasCompletedOfficeCommute(LocalDate.now()) }
+    }
+
+    @Test
+    fun `hasCompletedOfficeCommuteToday returns false when no completed commute exists`() = runTest {
+        coEvery { trackingDao.hasCompletedOfficeCommute(LocalDate.now()) } returns false
+
+        val result = repository.hasCompletedOfficeCommuteToday()
+
+        assertFalse(result)
+        coVerify { trackingDao.hasCompletedOfficeCommute(LocalDate.now()) }
     }
 }
