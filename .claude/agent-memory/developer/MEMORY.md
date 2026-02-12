@@ -51,3 +51,10 @@
 - **Notification Updates**: Periodic Updates nur bei TRACKING, nicht bei PAUSED (Battery Saving)
 - **PendingIntent Flags**: Immer `FLAG_IMMUTABLE` für Android 12+ (targetSdk 31+)
 - **Manifest**: `foregroundServiceType="location"` erforderlich für Location-based Services (Android 14+)
+
+## Google Maps Integration (F06)
+- **maps-compose**: Verwendet `com.google.maps.android:maps-compose` für Jetpack Compose Integration
+- **API Key**: In AndroidManifest.xml via `<meta-data android:name="com.google.android.geo.API_KEY" />`
+- **LatLng im ViewModel**: Google Maps LatLng-Klasse kann direkt im ViewModel verwendet werden
+- **Live Preview**: Temporäre Marker/Circles während Edit-Mode via StateFlow im ViewModel
+- **MapProperties**: `isMyLocationEnabled = true` erfordert FINE_LOCATION Permission (aus F05)

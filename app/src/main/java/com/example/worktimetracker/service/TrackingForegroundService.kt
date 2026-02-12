@@ -37,9 +37,13 @@ class TrackingForegroundService : Service() {
     @Inject
     lateinit var channelManager: NotificationChannelManager
 
+    @Inject
+    lateinit var beaconScanner: BeaconScanner
+
     private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
     private var stateJob: Job? = null
     private var updateJob: Job? = null
+    private var isBeaconScanningStarted = false
 
     companion object {
         const val ACTION_START = "com.example.worktimetracker.action.START"
@@ -52,6 +56,19 @@ class TrackingForegroundService : Service() {
 
         // Ensure notification channels are created
         channelManager.createChannels()
+
+        // Start BLE beacon scanning
+        if (!isBeaconScanningStarted) {
+            serviceScope.launch {
+                try {
+                    beaconScanner.startMonitoring()
+                    isBeaconScanningStarted = true
+                } catch (e: Exception) {
+                    // Log error but don't crash the service
+                    // Beacon scanning is optional and may not be configured
+                }
+            }
+        }
 
         // Start observing state machine (protect against multiple onCreate calls)
         if (stateJob?.isActive == true) return
@@ -96,6 +113,13 @@ class TrackingForegroundService : Service() {
         stateJob?.cancel()
         stateJob = null
         cancelPeriodicUpdates()
+
+        // Stop beacon scanning
+        if (isBeaconScanningStarted) {
+            beaconScanner.stopMonitoring()
+            isBeaconScanningStarted = false
+        }
+
         serviceScope.cancel()
     }
 

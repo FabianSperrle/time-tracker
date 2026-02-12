@@ -12,6 +12,8 @@ room = "2.6.1"
 playServicesLocation = "21.3.0"
 workRuntime = "2.9.1"
 datastore = "1.1.1"
+mapsCompose = "4.4.1"
+playServicesMaps = "18.2.0"
 junit = "4.13.2"
 junitJupiter = "5.11.4"
 junitVersion = "1.2.1"
@@ -22,6 +24,7 @@ espressoCore = "3.6.1"
 robolectric = "4.14"
 androidxTestCore = "1.6.1"
 ksp = "1.9.25-1.0.20"
+altbeacon = "2.20.6"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -45,6 +48,8 @@ androidx-room-compiler = { group = "androidx.room", name = "room-compiler", vers
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workRuntime" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+maps-compose = { group = "com.google.maps.android", name = "maps-compose", version.ref = "mapsCompose" }
+play-services-maps = { group = "com.google.android.gms", name = "play-services-maps", version.ref = "playServicesMaps" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version.ref = "junitJupiter" }
 junit-jupiter-api = { group = "org.junit.jupiter", name = "junit-jupiter-api", version.ref = "junitJupiter" }
@@ -58,6 +63,7 @@ kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
+altbeacon-android-beacon-library = { group = "org.altbeacon", name = "android-beacon-library", version.ref = "altbeacon" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

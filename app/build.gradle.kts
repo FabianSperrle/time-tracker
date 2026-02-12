@@ -91,6 +91,11 @@ dependencies {
 
     // Google Play Services
     implementation(libs.play.services.location)
+    implementation(libs.play.services.maps)
+    implementation(libs.maps.compose)
+
+    // BLE Beacon Scanning
+    implementation(libs.altbeacon.android.beacon.library)
 
     // WorkManager
     implementation(libs.androidx.work.runtime.ktx)

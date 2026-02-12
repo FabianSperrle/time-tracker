@@ -199,3 +199,72 @@
 2. **Service-Lifecycle**: Service wird via `startForegroundService()` gestartet, müsste zentral in App-Context komponente erfolgen
 3. **Test-Anforderungen für Services**: Robolectric hat Limits - aktuelle Tests sind placeholder
 4. **Dokumentiert aber nicht implementiert**: "Nächste Schritte" erwähnt "UI-Integration", aber AC #1 sollte bereits done sein
+
+## F06 — Geofence-Konfiguration via Karte
+
+### Review erfolgreich abgeschlossen (Iteration 1 - APPROVED)
+
+**Status:** APPROVED - Alle 8 Akzeptanzkriterien erfüllt, 23 Tests grün, Build SUCCESS.
+
+### Wichtige Patterns erkannt
+1. **Google Maps Compose:** maps-compose 4.4.1 + play-services-maps 18.2.0 in libs.versions.toml
+2. **StateFlow mit Temporary State:** MapUiState enthält temporäre Felder während Editing
+3. **Live Circle-Vorschau:** Radius-Slider aktualisiert Circle in Echtzeit (Compose re-render)
+4. **Marker + Circle:** Existierende Zonen + temporäre Zone beide gerendert
+5. **Bottom Sheet Edit Pattern:** ModalBottomSheet mit skipPartiallyExpanded = true
+6. **Validierte Save:** `enabled = name.isNotBlank() && position != null` (Smart UI!)
+7. **hasRequiredZones():** Prüft beide HOME_STATION und OFFICE nicht leer
+
+### Verifiziert Iteration 1
+- ✓ Build: assembleDebug SUCCESS, APK erstellt
+- ✓ Tests: 23 Unit Tests (9 Repo + 14 ViewModel), alle grün
+- ✓ MVVM: MapViewModel @HiltViewModel, GeofenceRepository @Singleton
+- ✓ Room: GeofenceZone in AppDatabase, DAO mit CRUD
+- ✓ Hilt: DatabaseModule.provideGeofenceDao() korrekt
+- ✓ F02 Integration: Entity + DAO vorhanden
+- ✓ F05 Integration: isMyLocationEnabled, Manifest permissions
+- ✓ F01 Integration: MapScreen in AppNavHost
+- ✓ Nullsafety: temporaryPosition?.let (keine !! nötig)
+- ✓ Coroutines: viewModelScope, Flow lazy, keine Leaks
+
+### Bekannte Limitierungen (dokumentiert)
+1. AC#4 Geocoding = [ ] nicht [x], wird F07
+2. API Key Placeholder (User setzt selbst)
+3. Kein Marker Drag (Tap-to-Place reicht)
+4. Geofence-Registrierung erst F07
+
+## F11 — Manuelles Tracking
+
+### Review erfolgreich abgeschlossen (Iteration 1 - APPROVED)
+
+**Status:** APPROVED - Alle 6 ACs erfüllt, 10 Tests grün (7 ViewModel + 3 Integration), Build SUCCESS.
+
+### Wichtige Erkenntnisse
+1. **UI State Machine**: DashboardViewModel nutzt `map()` auf TrackingStateMachine.state + `stateIn()` für UI-State - elegant und effizient
+2. **Composable Struktur**: Drei Sub-Composables (IdleContent, TrackingContent, PausedContent) für saubere Separation
+3. **Timer-Implementierung**: LaunchedEffect mit `while(true) + delay(1000)` ist einfach und batteriesparsam
+4. **Dropdown für Typ-Auswahl**: Drei Typen (Home Office, Büro, Sonstiges) alle mapped zu TrackingType Enum
+5. **Integration mit F04**: NotificationActionReceiver nutzt `goAsync()` + `PendingResult` für ANR-sichere Broadcasts
+6. **Pause-Logik**: Vollständig implementiert in State Machine und Repository (startPause/stopPause mit Pause-ID-Rückgabe)
+7. **Test-Pattern**: Integration-Tests mit MockK (coEvery/coVerify) + Turbine für State-Flows - genau richtig
+
+### Verifiziert Iteration 1
+- ✓ Build: assembleDebug SUCCESS (APK 31MB)
+- ✓ Tests: 10 Tests grün (DashboardViewModelTest 7, ManualTrackingIntegrationTest 3)
+- ✓ APK: erfolgreich erstellt
+- ✓ Alle 6 Akzeptanzkriterien erfüllt
+- ✓ Keine Speicherlecks (viewModelScope.launch korrekt genutzt)
+- ✓ MVVM + Repository + State Machine Patterns korrekt umgesetzt
+
+### Patterns erkannt
+1. **Sealed Class für UI State**: DashboardUiState mit Idle, Tracking, Paused - typsicher
+2. **StateFlow Transformation**: `state.map { ... }.stateIn()` für View-Model-Derived State
+3. **Dropdown mit State**: `remember { mutableStateOf(false) }` für show/hide, korrekt
+4. **When-Expression für Typen**: Vollständige Pattern-Matching ohne else - sicher
+5. **Tuple-Capture in Mocks**: Integration-Tests capturen Entry-IDs mit answers-Blöcken, gut für State-Testing
+
+### Known Limitations (alle dokumentiert als MVP):
+1. Kein Typ-Wechsel während Tracking → Design-Entscheidung, OK für Phase 1
+2. Timer-Granularität UI vs Notification → Batterie-Optimierung, OK
+3. Keine Pause-Historie in UI → Planmäßig für Phase 2
+4. Abhängigkeit von F04 Service → Dokumentiert, Dependency korrekt gehandhabt
