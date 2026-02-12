@@ -1,0 +1,15 @@
+{
+  "id": "4",
+  "subject": "F04: Foreground Service & Notifications",
+  "description": "Feature F04 implementieren gemäß docs/features/F04-foreground-service.md. Foreground Service für dauerhaftes Tracking mit Notification. BlockedBy: [F01, F03]",
+  "activeForm": "Implementiere F04: Foreground Service",
+  "status": "pending",
+  "blocks": [
+    "9",
+    "11"
+  ],
+  "blockedBy": [
+    "1",
+    "3"
+  ]
+}

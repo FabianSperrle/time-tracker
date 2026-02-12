@@ -1,0 +1,21 @@
+{
+  "id": "1",
+  "subject": "F01: Project Setup & Architektur",
+  "description": "Feature F01 implementieren gemäß docs/features/F01-project-setup.md. Grundlegendes Projekt-Setup: Hilt DI, Navigation, Theme, Base-Klassen. Keine Abhängigkeiten – kann sofort starten.",
+  "activeForm": "Implementiere F01: Project Setup & Architektur",
+  "status": "completed",
+  "blocks": [
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "9",
+    "12",
+    "13",
+    "14",
+    "16"
+  ],
+  "blockedBy": []
+}

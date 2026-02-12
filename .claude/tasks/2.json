@@ -1,0 +1,20 @@
+{
+  "id": "2",
+  "subject": "F02: Lokale Datenbank (Room)",
+  "description": "Feature F02 implementieren gemäß docs/features/F02-lokale-datenbank.md. Room-Datenbank mit Entities, DAOs, Migrationen. BlockedBy: [F01]",
+  "activeForm": "Implementiere F02: Lokale Datenbank",
+  "status": "in_progress",
+  "blocks": [
+    "3",
+    "6",
+    "7",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15"
+  ],
+  "blockedBy": [
+    "1"
+  ]
+}

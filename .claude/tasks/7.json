@@ -1,0 +1,17 @@
+{
+  "id": "7",
+  "subject": "F07: Geofence Monitoring",
+  "description": "Feature F07 implementieren gemäß docs/features/F07-geofence-monitoring.md. Geofence-Überwachung mit Google Play Services. BlockedBy: [F01, F02, F03, F05, F06]",
+  "activeForm": "Implementiere F07: Geofence Monitoring",
+  "status": "pending",
+  "blocks": [
+    "8"
+  ],
+  "blockedBy": [
+    "1",
+    "2",
+    "3",
+    "5",
+    "6"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "id": "13",
+  "subject": "F13: Dashboard Tagesansicht",
+  "description": "Feature F13 implementieren gemäß docs/features/F13-dashboard-tagesansicht.md. Tagesübersicht mit Zeiteinträgen. BlockedBy: [F01, F02, F03, F11]",
+  "activeForm": "Implementiere F13: Dashboard Tagesansicht",
+  "status": "pending",
+  "blocks": [],
+  "blockedBy": [
+    "1",
+    "2",
+    "3",
+    "11"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "11",
+  "subject": "F11: Manuelles Tracking",
+  "description": "Feature F11 implementieren gemäß docs/features/F11-manuelles-tracking.md. Start/Stop-Button für manuelles Tracking. BlockedBy: [F02, F03, F04]",
+  "activeForm": "Implementiere F11: Manuelles Tracking",
+  "status": "pending",
+  "blocks": [
+    "13"
+  ],
+  "blockedBy": [
+    "2",
+    "3",
+    "4"
+  ]
+}

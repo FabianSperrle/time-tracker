@@ -1,0 +1,14 @@
+{
+  "id": "14",
+  "subject": "F14: Dashboard Wochenansicht",
+  "description": "Feature F14 implementieren gemäß docs/features/F14-dashboard-wochenansicht.md. Wochenübersicht mit Statistiken. BlockedBy: [F01, F02]",
+  "activeForm": "Implementiere F14: Dashboard Wochenansicht",
+  "status": "pending",
+  "blocks": [
+    "15"
+  ],
+  "blockedBy": [
+    "1",
+    "2"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "10",
+  "subject": "F10: Home-Office-Tracking Logik",
+  "description": "Feature F10 implementieren gemäß docs/features/F10-home-office-tracking.md. Automatische Home-Office-Erkennung via BLE. BlockedBy: [F03, F09]",
+  "activeForm": "Implementiere F10: Home-Office-Tracking",
+  "status": "pending",
+  "blocks": [],
+  "blockedBy": [
+    "3",
+    "9"
+  ]
+}

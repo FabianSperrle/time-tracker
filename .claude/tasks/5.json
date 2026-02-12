@@ -1,0 +1,15 @@
+{
+  "id": "5",
+  "subject": "F05: Permission Management & Onboarding",
+  "description": "Feature F05 implementieren gemäß docs/features/F05-permission-management.md. Runtime-Permissions für Location, BLE, Notifications. BlockedBy: [F01]",
+  "activeForm": "Implementiere F05: Permission Management",
+  "status": "in_progress",
+  "blocks": [
+    "6",
+    "7",
+    "9"
+  ],
+  "blockedBy": [
+    "1"
+  ]
+}

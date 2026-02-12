@@ -1,0 +1,12 @@
+{
+  "id": "15",
+  "subject": "F15: CSV-Export",
+  "description": "Feature F15 implementieren gemäß docs/features/F15-csv-export.md. Export der Zeiteinträge als CSV. BlockedBy: [F02, F14]",
+  "activeForm": "Implementiere F15: CSV-Export",
+  "status": "pending",
+  "blocks": [],
+  "blockedBy": [
+    "2",
+    "14"
+  ]
+}

@@ -8,6 +8,7 @@ import androidx.navigation.compose.composable
 import com.example.worktimetracker.ui.screens.DashboardScreen
 import com.example.worktimetracker.ui.screens.EntriesScreen
 import com.example.worktimetracker.ui.screens.MapScreen
+import com.example.worktimetracker.ui.screens.OnboardingScreen
 import com.example.worktimetracker.ui.screens.SettingsScreen
 
 /**
@@ -16,13 +17,23 @@ import com.example.worktimetracker.ui.screens.SettingsScreen
 @Composable
 fun AppNavHost(
     navController: NavHostController,
+    startDestination: String = Screen.Dashboard.route,
     modifier: Modifier = Modifier
 ) {
     NavHost(
         navController = navController,
-        startDestination = Screen.Dashboard.route,
+        startDestination = startDestination,
         modifier = modifier
     ) {
+        composable(Screen.Onboarding.route) {
+            OnboardingScreen(
+                onComplete = {
+                    navController.navigate(Screen.Dashboard.route) {
+                        popUpTo(Screen.Onboarding.route) { inclusive = true }
+                    }
+                }
+            )
+        }
         composable(Screen.Dashboard.route) {
             DashboardScreen()
         }

@@ -1,0 +1,12 @@
+{
+  "id": "12",
+  "subject": "F12: Einträge bearbeiten & korrigieren",
+  "description": "Feature F12 implementieren gemäß docs/features/F12-eintraege-bearbeiten.md. Editor für Zeiteinträge. BlockedBy: [F01, F02]",
+  "activeForm": "Implementiere F12: Einträge bearbeiten",
+  "status": "pending",
+  "blocks": [],
+  "blockedBy": [
+    "1",
+    "2"
+  ]
+}

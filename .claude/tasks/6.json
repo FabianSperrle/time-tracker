@@ -1,0 +1,15 @@
+{
+  "id": "6",
+  "subject": "F06: Geofence-Konfiguration via Karte",
+  "description": "Feature F06 implementieren gemäß docs/features/F06-geofence-map-config.md. Kartenansicht zur Geofence-Konfiguration. BlockedBy: [F01, F02, F05]",
+  "activeForm": "Implementiere F06: Geofence Map Config",
+  "status": "pending",
+  "blocks": [
+    "7"
+  ],
+  "blockedBy": [
+    "1",
+    "2",
+    "5"
+  ]
+}

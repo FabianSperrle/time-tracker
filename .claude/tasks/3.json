@@ -1,0 +1,20 @@
+{
+  "id": "3",
+  "subject": "F03: Tracking State Machine",
+  "description": "Feature F03 implementieren gemäß docs/features/F03-tracking-state-machine.md. State Machine für Tracking-Zustände (IDLE, TRACKING, PAUSED). BlockedBy: [F01, F02]",
+  "activeForm": "Implementiere F03: Tracking State Machine",
+  "status": "pending",
+  "blocks": [
+    "4",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "13"
+  ],
+  "blockedBy": [
+    "1",
+    "2"
+  ]
+}

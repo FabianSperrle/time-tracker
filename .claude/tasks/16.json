@@ -1,0 +1,14 @@
+{
+  "id": "16",
+  "subject": "F16: Einstellungen",
+  "description": "Feature F16 implementieren gemäß docs/features/F16-einstellungen.md. Settings-Screen mit DataStore. BlockedBy: [F01]",
+  "activeForm": "Implementiere F16: Einstellungen",
+  "status": "in_progress",
+  "blocks": [
+    "8",
+    "9"
+  ],
+  "blockedBy": [
+    "1"
+  ]
+}

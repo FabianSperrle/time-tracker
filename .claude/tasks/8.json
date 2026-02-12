@@ -1,0 +1,13 @@
+{
+  "id": "8",
+  "subject": "F08: Pendel-Tracking Logik",
+  "description": "Feature F08 implementieren gemäß docs/features/F08-pendel-tracking.md. Automatische Erkennung von Pendeltagen via Geofence. BlockedBy: [F03, F07, F16]",
+  "activeForm": "Implementiere F08: Pendel-Tracking",
+  "status": "pending",
+  "blocks": [],
+  "blockedBy": [
+    "3",
+    "7",
+    "16"
+  ]
+}
