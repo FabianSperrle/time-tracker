@@ -11,7 +11,8 @@ Für jedes freigeschaltete Feature:
    - Nach Abschluss: APK bauen (builds/v{VERSION}.apk)
    - Task als DONE markieren
    - Abhängige Tasks automatisch freischalten
-   - Parallelisieren wo möglich (siehe TASKS.md / Wellen)
+   - Keine Parallelisierung; immer nur ein Feature implementieren.
+   - Features in "aufsteigender" Reihenfolge nach Feature-Nummer implementieren.
 
 ## Architektur
 - MVVM + Repository Pattern

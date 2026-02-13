@@ -268,3 +268,42 @@
 2. Timer-Granularität UI vs Notification → Batterie-Optimierung, OK
 3. Keine Pause-Historie in UI → Planmäßig für Phase 2
 4. Abhängigkeit von F04 Service → Dokumentiert, Dependency korrekt gehandhabt
+
+## F07 — Geofence Monitoring
+
+### Review Iteration 1 - CHANGES_REQUESTED
+
+**Status:** CHANGES_REQUESTED - 3 Findings (2 MAJOR, 1 MINOR)
+
+### Kritische Findings
+1. **MAJOR - BroadcastReceiver.onReceive() nutzt unsichere CoroutineScope** (Line 98)
+   - `CoroutineScope(Dispatchers.Default).launch {}` ohne Binding an Receiver-Lifecycle
+   - Kann zu Memory Leaks führen, wenn Coroutine länger läuft als Receiver lebt
+   - Sollte: `goAsync()` API nutzen oder `PendingResult` Pattern. Best Practice seit Android Q+
+
+2. **MAJOR - Fehlende Exception-Handling in onReceive()** (Lines 99-117)
+   - Loop über `triggeringGeofences` ruft `geofenceDao.getZoneById(zoneId)` auf
+   - Falls DAO Exception wirft, wird sie nicht abgefangen → potentiell ANR
+   - Sollte: try-catch Block um Zone-Lookup mit Log auf Error
+
+3. **MINOR - Test-Abdeckung für onReceive() unvollständig**
+   - GeofenceBroadcastReceiverTest testet nur `mapTransitionToEvent()` (statische Methode)
+   - onReceive() komplexe Logik (Zone-Lookup, State Machine Call, Logging) nicht getestet
+   - Grund: GeofencingEvent.fromIntent() nicht mockbar - würde Instrumented Tests brauchen
+   - Nicht blockierend: E2E Testing ist akzeptabel, dokumentieren aber Limitation
+
+### Positiv identifiziert
+- ✓ GeofenceRegistrar: Korrekt implementiert mit Task-Listeners + Exception-Handling
+- ✓ GeofenceModule: FLAG_MUTABLE korrekt für GeofencingClient (Geofencing API modifiziert Intent)
+- ✓ BootCompletedReceiver: Ruft registerAllZones() nach Boot auf ✓
+- ✓ WorkTimeTrackerApp: Ruft registerAllZones() bei App-Start auf ✓
+- ✓ refreshRegistrations() Placeholder für F06 (OK, noch nicht implementiert)
+- ✓ Tests: 14 Tests grün (6 Registrar + 8 Receiver Event-Mapping), alle bestanden
+- ✓ Build: assembleDebug SUCCESS, APK erstellt
+- ✓ AC #1-6 Struktur vorhanden, nur onReceive() Lifecycle-Issue
+
+### Wichtige Pattern erkannt
+1. **PendingIntent.FLAG_MUTABLE notwendig**: Geofencing API modifiziert Intent mit Event-Daten
+2. **DAO im BroadcastReceiver**: Hilt-Injection via @AndroidEntryPoint funktioniert
+3. **Geofence ID = Zone ID**: request ID mapped direkt zu Zone PK für Lookup
+4. **handleGeofenceError()**: Switch über ErrorCodes mit LOG → Notification kommt F09

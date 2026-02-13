@@ -13,6 +13,10 @@ class GeofenceRepository @Inject constructor(
 ) {
     fun getAllZones(): Flow<List<GeofenceZone>> = geofenceDao.getAllZones()
 
+    suspend fun getAllZonesOnce(): List<GeofenceZone> = geofenceDao.getAllZonesOnce()
+
+    suspend fun getZoneById(id: String): GeofenceZone? = geofenceDao.getZoneById(id)
+
     suspend fun getZonesByType(type: ZoneType): List<GeofenceZone> =
         geofenceDao.getZonesByType(type)
 

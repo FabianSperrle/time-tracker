@@ -15,6 +15,12 @@ interface GeofenceDao {
     @Query("SELECT * FROM geofence_zones")
     fun getAllZones(): Flow<List<GeofenceZone>>
 
+    @Query("SELECT * FROM geofence_zones")
+    suspend fun getAllZonesOnce(): List<GeofenceZone>
+
+    @Query("SELECT * FROM geofence_zones WHERE id = :id")
+    suspend fun getZoneById(id: String): GeofenceZone?
+
     @Query("SELECT * FROM geofence_zones WHERE zoneType = :type")
     suspend fun getZonesByType(type: ZoneType): List<GeofenceZone>
 

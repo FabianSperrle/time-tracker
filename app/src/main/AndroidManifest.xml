@@ -69,6 +69,11 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- Receiver for Geofence Events -->
+        <receiver
+            android:name=".service.GeofenceBroadcastReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import com.example.worktimetracker.domain.tracking.TrackingState
 import com.example.worktimetracker.domain.tracking.TrackingStateMachine
 import dagger.hilt.android.AndroidEntryPoint
@@ -15,12 +16,20 @@ import javax.inject.Inject
 /**
  * Receives BOOT_COMPLETED broadcast and restores tracking state.
  * If tracking was active before reboot, restarts the foreground service.
+ * Also re-registers geofences since they are lost on reboot.
  */
 @AndroidEntryPoint
 class BootCompletedReceiver : BroadcastReceiver() {
 
     @Inject
     lateinit var stateMachine: TrackingStateMachine
+
+    @Inject
+    lateinit var geofenceRegistrar: GeofenceRegistrar
+
+    companion object {
+        private const val TAG = "BootCompletedReceiver"
+    }
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) {
@@ -30,6 +39,14 @@ class BootCompletedReceiver : BroadcastReceiver() {
         // Restore state from storage
         CoroutineScope(Dispatchers.Default).launch {
             stateMachine.restoreState()
+
+            // Re-register geofences (they are lost on reboot)
+            try {
+                geofenceRegistrar.registerAllZones()
+                Log.d(TAG, "Geofences re-registered after boot")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to re-register geofences after boot", e)
+            }
 
             // If tracking was active, restart the service
             val currentState = stateMachine.state.value
