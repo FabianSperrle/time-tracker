@@ -21,6 +21,8 @@ import org.junit.jupiter.api.Test
 import com.example.worktimetracker.data.local.entity.TrackingEntry
 import com.example.worktimetracker.data.local.entity.Pause
 import com.example.worktimetracker.data.settings.SettingsProvider
+import com.example.worktimetracker.domain.commute.CommuteDayChecker
+import com.example.worktimetracker.domain.commute.CommutePhaseTracker
 import com.example.worktimetracker.domain.tracking.TrackingStateStorage
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.time.LocalDate
@@ -51,7 +53,10 @@ class ManualTrackingIntegrationTest {
         coEvery { stateStorage.loadState() } returns TrackingState.Idle
         coEvery { stateStorage.saveState(any()) } returns Unit
 
-        stateMachine = TrackingStateMachine(repository, settingsProvider, stateStorage)
+        stateMachine = TrackingStateMachine(
+            repository, settingsProvider, stateStorage,
+            CommutePhaseTracker(), CommuteDayChecker(settingsProvider)
+        )
     }
 
     @Test

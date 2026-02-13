@@ -137,7 +137,7 @@ class TrackingRepositoryTest {
     }
 
     @Test
-    fun `stopTracking updates entry with endTime`() = runTest {
+    fun `stopTracking updates entry with endTime using default now`() = runTest {
         val entry = TrackingEntry(
             id = "1",
             date = LocalDate.now(),
@@ -154,6 +154,29 @@ class TrackingRepositoryTest {
         coVerify {
             trackingDao.update(match {
                 it.id == "1" && it.endTime != null
+            })
+        }
+    }
+
+    @Test
+    fun `stopTracking uses explicit endTime when provided`() = runTest {
+        val explicitEndTime = LocalDateTime.of(2026, 2, 9, 17, 23)
+        val entry = TrackingEntry(
+            id = "1",
+            date = LocalDate.now(),
+            type = TrackingType.COMMUTE_OFFICE,
+            startTime = LocalDateTime.now().minusHours(8),
+            endTime = null,
+            autoDetected = true
+        )
+        coEvery { trackingDao.getEntryById("1") } returns entry
+        coEvery { trackingDao.update(any()) } returns Unit
+
+        repository.stopTracking("1", explicitEndTime)
+
+        coVerify {
+            trackingDao.update(match {
+                it.id == "1" && it.endTime == explicitEndTime
             })
         }
     }

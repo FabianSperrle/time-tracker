@@ -200,6 +200,47 @@
 3. **Test-Anforderungen für Services**: Robolectric hat Limits - aktuelle Tests sind placeholder
 4. **Dokumentiert aber nicht implementiert**: "Nächste Schritte" erwähnt "UI-Integration", aber AC #1 sollte bereits done sein
 
+## F08 — Pendel-Tracking Logik
+
+### Review erfolgreich abgeschlossen (Iteration 2 - APPROVED) ✓
+
+**Status:** APPROVED - Alle 3 Findings aus Iteration 1 behoben, 82+ Tests grün, Build SUCCESS.
+
+### Findings Iteration 1 → Iteration 2 (ALLE BEHOBEN)
+
+1. **CRITICAL - stopTracking() mit Event-Timestamp**
+   - FIXED: `TrackingRepository.stopTracking(entryId: String, endTime: LocalDateTime = LocalDateTime.now())`
+   - `handleReturnToHomeStation()` übergibt `event.timestamp` statt `LocalDateTime.now()`
+   - Test verifiziert Timestamp-Übergabe korrekt
+
+2. **MINOR - hasCompletedOfficeCommuteToday() Check**
+   - CLARIFIED & FIXED: Edge Case richtig interpretiert
+   - Tracking SOLL bei HOME_STATION-Return enden auch ohne Office-Visit
+   - Code validiert Phase statt Office-Visit Check (sauberer)
+   - Test `return to home station without office visit` validates korrektes Verhalten
+
+3. **MINOR - Phase-Transition zu schnell (completeCommute + reset)**
+   - FIXED: `reset()` wird NICHT mehr nach `completeCommute()` aufgerufen
+   - COMPLETED-Phase bleibt persistent bis nächster `startCommute()` oder `handleManualStop()`
+   - UI kann COMPLETED-Phase zuverlässig beobachten
+   - Test `COMPLETED phase persists` validates Persistenz
+
+### Test Coverage F08
+- CommuteDayCheckerTest: 15 Tests
+- CommutePhaseTrackerTest: 14 Tests
+- CommuteStateMachineIntegrationTest: 8 Tests (+2 neue für Findings)
+- CommuteReminderLogicTest: 15 Tests
+- TrackingRepositoryTest: 13 Tests (+1 neu für explicit endTime)
+- TrackingStateMachineTest: 17 Tests
+- **Alle GRÜN, keine Failures**
+
+### Patterns erkannt für zukünftige Features
+
+1. **Event Timestamp Consistency**: Geofence-Events sollten immer mit `event.timestamp` persistiert werden, nicht `LocalDateTime.now()`
+2. **Phase Persistence Design**: Enums wie COMPLETED sollten persistent sein bis aktiv überschrieben, nicht sofort resettet
+3. **Edge Case Validation über State**: Statt separate Datenbank-Queries (hasCompletedOfficeCommuteToday), einfach State Machine Phase checken
+4. **StateFlow Observability**: Achten dass UI-kritische States observable bleiben (nicht zu schnell resettet)
+
 ## F06 — Geofence-Konfiguration via Karte
 
 ### Review erfolgreich abgeschlossen (Iteration 1 - APPROVED)
@@ -268,6 +309,45 @@
 2. Timer-Granularität UI vs Notification → Batterie-Optimierung, OK
 3. Keine Pause-Historie in UI → Planmäßig für Phase 2
 4. Abhängigkeit von F04 Service → Dokumentiert, Dependency korrekt gehandhabt
+
+## F08 — Pendel-Tracking Logik
+
+### Review Iteration 1 - CHANGES_REQUESTED
+
+**Status:** CHANGES_REQUESTED - 3 Findings (1 CRITICAL, 2 MINOR)
+
+### Kritische Findings
+
+1. **CRITICAL - AC #3 nicht erfüllt: Endzeit wird mit LocalDateTime.now() statt Event-Timestamp gesetzt**
+   - `TrackingRepository.stopTracking()` nutzt `LocalDateTime.now()` statt Event-Zeitstempel
+   - Sollte: `stopTracking(entryId, endTime: LocalDateTime)` mit Event-Zeitstempel übergeben
+   - Impact: Zeitversatz wenn Verarbeitung verzögert ist
+
+2. **MINOR - hasCompletedOfficeCommuteToday() Check entfernt, Spec Edge Case unklar**
+   - Alte Logik prüfte "Büro mindestens einmal besucht", neue Logik prüft nur TrackingType
+   - Spec sagt: "Büro-Geofence nie betreten → Tracking läuft weiter" aber Code stoppt trotzdem
+   - Klären: Ist das beabsichtigte Verhalten oder wurde Validierung versehentlich entfernt?
+
+3. **MINOR - Phase-Transition COMPLETED → null ist zu schnell**
+   - `completeCommute()` + sofort `reset()` in `handleReturnToHomeStation()`
+   - Phase COMPLETED existiert effektiv nur einen Event-Zyklus lang
+   - Könnte UI-Observer stören die auf Phase horchen
+
+### Positiv identifiziert
+- ✓ Build: SUCCESS, Tests: 43 grün (10 CommuteDayChecker + 12 CommutePhaseTracker + 15 CommuteReminderLogic + 6 CommuteStateMachineIntegration)
+- ✓ APK: erstellt
+- ✓ Hilt: WorkTimeTrackerApp implementiert Configuration.Provider + HiltWorkerFactory
+- ✓ WorkManager: CommuteReminderScheduler.scheduleReminders() in App.onCreate() aufgerufen
+- ✓ Code-Qualität: Kotlin-idiomatisch, @Singleton, Suspend-Funktionen für Flow.first()
+- ✓ AC #1, #2, #4, #5, #6, #7: alle erfüllt
+- ✓ AC #3: Logik vorhanden aber mit falscher Zeitstempel-Quelle
+
+### Patterns erkannt
+1. **CommuteDayChecker als Singleton Domain Service**: Suspend-Funktionen, Flow.first() aus Settings
+2. **CommutePhaseTracker mit StateFlow**: Saubere State-Machine mit validierten Übergängen
+3. **Pure Logic in CommuteReminderLogic**: Object statt Klasse, keine Dependencies
+4. **HiltWorker**: @HiltWorker + @AssistedInject für WorkManager-Integration
+5. **PeriodicWorkRequest mit KEEP Policy**: Verhindert Duplikate bei App-Restarts
 
 ## F07 — Geofence Monitoring
 

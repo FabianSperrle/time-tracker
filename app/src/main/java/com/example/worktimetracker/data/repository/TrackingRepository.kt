@@ -56,10 +56,10 @@ class TrackingRepository @Inject constructor(
         return entry
     }
 
-    suspend fun stopTracking(entryId: String) {
+    suspend fun stopTracking(entryId: String, endTime: LocalDateTime = LocalDateTime.now()) {
         val entry = trackingDao.getEntryById(entryId)
         if (entry != null && entry.endTime == null) {
-            val updatedEntry = entry.copy(endTime = LocalDateTime.now())
+            val updatedEntry = entry.copy(endTime = endTime)
             trackingDao.update(updatedEntry)
         }
     }

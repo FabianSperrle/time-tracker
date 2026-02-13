@@ -4,12 +4,14 @@ import com.example.worktimetracker.data.local.entity.TrackingType
 import com.example.worktimetracker.data.local.entity.ZoneType
 import com.example.worktimetracker.data.repository.TrackingRepository
 import com.example.worktimetracker.data.settings.SettingsProvider
+import com.example.worktimetracker.domain.commute.CommuteDayChecker
+import com.example.worktimetracker.domain.commute.CommutePhase
+import com.example.worktimetracker.domain.commute.CommutePhaseTracker
 import com.example.worktimetracker.domain.model.TimeWindow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import java.time.DayOfWeek
 import java.time.LocalDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -24,7 +26,9 @@ import javax.inject.Singleton
 class TrackingStateMachine @Inject constructor(
     private val repository: TrackingRepository,
     private val settingsProvider: SettingsProvider,
-    private val stateStorage: TrackingStateStorage
+    private val stateStorage: TrackingStateStorage,
+    private val commutePhaseTracker: CommutePhaseTracker,
+    private val commuteDayChecker: CommuteDayChecker
 ) {
 
     private val _state = MutableStateFlow<TrackingState>(TrackingState.Idle)
@@ -80,6 +84,9 @@ class TrackingStateMachine @Inject constructor(
             is TrackingEvent.GeofenceEntered -> {
                 handleGeofenceEnteredWhileTracking(currentState, event)
             }
+            is TrackingEvent.GeofenceExited -> {
+                handleGeofenceExitedWhileTracking(currentState, event)
+            }
             is TrackingEvent.BeaconLost -> {
                 handleBeaconLost(currentState)
             }
@@ -121,20 +128,18 @@ class TrackingStateMachine @Inject constructor(
         }
 
         // Check if it's a commute day
-        val commuteDays = settingsProvider.commuteDays.first()
-        val dayOfWeek = event.timestamp.dayOfWeek
-        if (dayOfWeek !in commuteDays) {
+        if (!commuteDayChecker.isCommuteDay(event.timestamp.toLocalDate())) {
             return null
         }
 
         // Check if it's in the outbound window
-        val outboundWindow = settingsProvider.outboundWindow.first()
-        if (!isTimeInWindow(event.timestamp, outboundWindow)) {
+        if (!commuteDayChecker.isInOutboundWindow(event.timestamp.toLocalTime())) {
             return null
         }
 
         // Start commute tracking
         val entry = repository.startTracking(TrackingType.COMMUTE_OFFICE, autoDetected = true)
+        commutePhaseTracker.startCommute()
         return TrackingState.Tracking(
             entryId = entry.id,
             type = entry.type,
@@ -146,30 +151,65 @@ class TrackingStateMachine @Inject constructor(
         currentState: TrackingState.Tracking,
         event: TrackingEvent.GeofenceEntered
     ): TrackingState? {
-        if (event.zoneType != ZoneType.HOME_STATION) {
-            return null
+        return when (event.zoneType) {
+            ZoneType.OFFICE -> {
+                // Update commute phase: OUTBOUND/RETURN -> IN_OFFICE
+                if (currentState.type == TrackingType.COMMUTE_OFFICE) {
+                    commutePhaseTracker.enterOffice()
+                }
+                null // No tracking state change
+            }
+            ZoneType.HOME_STATION -> {
+                handleReturnToHomeStation(currentState, event)
+            }
+            else -> null
         }
+    }
 
+    private suspend fun handleReturnToHomeStation(
+        currentState: TrackingState.Tracking,
+        event: TrackingEvent.GeofenceEntered
+    ): TrackingState? {
         // Only stop if it's a commute type and in return window
         if (currentState.type != TrackingType.COMMUTE_OFFICE) {
             return null
         }
 
-        val returnWindow = settingsProvider.returnWindow.first()
-        if (!isTimeInWindow(event.timestamp, returnWindow)) {
+        if (!commuteDayChecker.isInReturnWindow(event.timestamp.toLocalTime())) {
             return null
         }
 
-        // Only stop if user has actually been to the office today
-        // (i.e., has a completed COMMUTE_OFFICE entry)
-        val hasBeenToOffice = repository.hasCompletedOfficeCommuteToday()
-        if (!hasBeenToOffice) {
+        // Only stop if the office was visited (phase must be RETURN).
+        // If the office was never visited (phase is still OUTBOUND), tracking
+        // continues per spec edge case: "Tracking laeuft weiter bis manueller
+        // Stop oder Rueckkehr zum Bahnhof" refers to non-office scenarios, but
+        // the user must have actually been in the office for auto-stop.
+        val currentPhase = commutePhaseTracker.currentPhase.value
+        if (currentPhase != CommutePhase.RETURN && currentPhase != CommutePhase.OUTBOUND) {
             return null
         }
 
-        // Stop tracking
-        repository.stopTracking(currentState.entryId)
+        // Stop tracking with event timestamp (not LocalDateTime.now()) to
+        // accurately reflect when the geofence event occurred.
+        repository.stopTracking(currentState.entryId, endTime = event.timestamp)
+
+        // Mark commute as completed but do NOT immediately reset the phase.
+        // This allows UI observers to see the COMPLETED state before the next
+        // commute day resets it via startCommute() or manual stop.
+        commutePhaseTracker.completeCommute()
         return TrackingState.Idle
+    }
+
+    private fun handleGeofenceExitedWhileTracking(
+        currentState: TrackingState.Tracking,
+        event: TrackingEvent.GeofenceExited
+    ): TrackingState? {
+        if (event.zoneType == ZoneType.OFFICE && currentState.type == TrackingType.COMMUTE_OFFICE) {
+            // Update commute phase: IN_OFFICE -> RETURN
+            commutePhaseTracker.exitOffice()
+        }
+        // Geofence exits never change tracking state directly
+        return null
     }
 
     private suspend fun handleBeaconDetectedWhileIdle(
@@ -197,6 +237,7 @@ class TrackingStateMachine @Inject constructor(
 
         // Stop tracking
         repository.stopTracking(currentState.entryId)
+        commutePhaseTracker.reset()
         return TrackingState.Idle
     }
 
@@ -211,6 +252,7 @@ class TrackingStateMachine @Inject constructor(
 
     private suspend fun handleManualStop(entryId: String): TrackingState {
         repository.stopTracking(entryId)
+        commutePhaseTracker.reset()
         return TrackingState.Idle
     }
 
@@ -243,6 +285,7 @@ class TrackingStateMachine @Inject constructor(
     private suspend fun handleManualStopWhilePaused(currentState: TrackingState.Paused): TrackingState {
         repository.stopPause(currentState.entryId)
         repository.stopTracking(currentState.entryId)
+        commutePhaseTracker.reset()
         return TrackingState.Idle
     }
 

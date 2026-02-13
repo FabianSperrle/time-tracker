@@ -6,6 +6,8 @@ import com.example.worktimetracker.data.local.entity.TrackingType
 import com.example.worktimetracker.data.local.entity.ZoneType
 import com.example.worktimetracker.data.repository.TrackingRepository
 import com.example.worktimetracker.data.settings.SettingsProvider
+import com.example.worktimetracker.domain.commute.CommuteDayChecker
+import com.example.worktimetracker.domain.commute.CommutePhaseTracker
 import com.example.worktimetracker.domain.model.TimeWindow
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -28,6 +30,8 @@ class TrackingStateMachineTest {
     private lateinit var repository: TrackingRepository
     private lateinit var settingsProvider: SettingsProvider
     private lateinit var stateStorage: TrackingStateStorage
+    private lateinit var commutePhaseTracker: CommutePhaseTracker
+    private lateinit var commuteDayChecker: CommuteDayChecker
     private lateinit var stateMachine: TrackingStateMachine
 
     @BeforeEach
@@ -35,6 +39,7 @@ class TrackingStateMachineTest {
         repository = mockk(relaxed = true)
         settingsProvider = mockk()
         stateStorage = mockk(relaxed = true)
+        commutePhaseTracker = CommutePhaseTracker()
 
         // Default settings
         every { settingsProvider.commuteDays } returns flowOf(setOf(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY))
@@ -45,7 +50,8 @@ class TrackingStateMachineTest {
 
         coEvery { repository.getActiveEntry() } returns null
 
-        stateMachine = TrackingStateMachine(repository, settingsProvider, stateStorage)
+        commuteDayChecker = CommuteDayChecker(settingsProvider)
+        stateMachine = TrackingStateMachine(repository, settingsProvider, stateStorage, commutePhaseTracker, commuteDayChecker)
     }
 
     // ========== IDLE → TRACKING Tests ==========
@@ -205,7 +211,7 @@ class TrackingStateMachineTest {
     // ========== TRACKING → IDLE Tests ==========
 
     @Test
-    fun `TRACKING to IDLE on GeofenceEntered HOME_STATION during return window when been to office`() = runTest {
+    fun `TRACKING to IDLE on GeofenceEntered HOME_STATION during return window`() = runTest {
         // Arrange: Start tracking at 08:00, end at 17:00 (return window)
         val startTime = LocalDateTime.of(2026, 2, 9, 8, 0)
         val returnTime = LocalDateTime.of(2026, 2, 9, 17, 0)
@@ -220,8 +226,6 @@ class TrackingStateMachineTest {
             autoDetected = true
         )
         coEvery { repository.startTracking(TrackingType.COMMUTE_OFFICE, true) } returns trackingEntry
-        // User has been to office today (has completed office commute)
-        coEvery { repository.hasCompletedOfficeCommuteToday() } returns true
 
         val startEvent = TrackingEvent.GeofenceEntered(ZoneType.HOME_STATION, startTime)
         val returnEvent = TrackingEvent.GeofenceEntered(ZoneType.HOME_STATION, returnTime)
@@ -242,16 +246,17 @@ class TrackingStateMachineTest {
             val newState = awaitItem()
             assertTrue(newState is TrackingState.Idle)
 
-            coVerify { repository.stopTracking("entry-1") }
+            // Verify event timestamp is used, not LocalDateTime.now()
+            coVerify { repository.stopTracking("entry-1", returnTime) }
             coVerify { stateStorage.saveState(TrackingState.Idle) }
         }
     }
 
     @Test
-    fun `TRACKING ignores GeofenceEntered HOME_STATION during return window when NOT been to office`() = runTest {
-        // Arrange: Start tracking at 08:00, try to end at 17:00 (return window) but no prior office visit
+    fun `TRACKING ignores GeofenceEntered HOME_STATION outside return window`() = runTest {
+        // Arrange: Start tracking at 08:00, try to end at 12:00 (outside return window)
         val startTime = LocalDateTime.of(2026, 2, 9, 8, 0)
-        val returnTime = LocalDateTime.of(2026, 2, 9, 17, 0)
+        val earlyReturnTime = LocalDateTime.of(2026, 2, 9, 12, 0)
 
         val trackingEntry = TrackingEntry(
             id = "entry-1",
@@ -262,11 +267,9 @@ class TrackingStateMachineTest {
             autoDetected = true
         )
         coEvery { repository.startTracking(TrackingType.COMMUTE_OFFICE, true) } returns trackingEntry
-        // User has NOT been to office today
-        coEvery { repository.hasCompletedOfficeCommuteToday() } returns false
 
         val startEvent = TrackingEvent.GeofenceEntered(ZoneType.HOME_STATION, startTime)
-        val returnEvent = TrackingEvent.GeofenceEntered(ZoneType.HOME_STATION, returnTime)
+        val returnEvent = TrackingEvent.GeofenceEntered(ZoneType.HOME_STATION, earlyReturnTime)
 
         // Act
         stateMachine.state.test {
@@ -277,12 +280,12 @@ class TrackingStateMachineTest {
             val trackingState = awaitItem()
             assertTrue(trackingState is TrackingState.Tracking)
 
-            // Try to end tracking - should be ignored
+            // Try to end tracking outside return window - should be ignored
             stateMachine.processEvent(returnEvent)
 
             // Assert: Should stay in Tracking state
             expectNoEvents()
-            coVerify(exactly = 0) { repository.stopTracking(any()) }
+            coVerify(exactly = 0) { repository.stopTracking(any(), any()) }
         }
     }
 
@@ -315,7 +318,7 @@ class TrackingStateMachineTest {
             val newState = awaitItem()
             assertTrue(newState is TrackingState.Idle)
 
-            coVerify { repository.stopTracking("entry-1") }
+            coVerify { repository.stopTracking("entry-1", any()) }
         }
     }
 
@@ -350,7 +353,7 @@ class TrackingStateMachineTest {
             val newState = awaitItem()
             assertTrue(newState is TrackingState.Idle)
 
-            coVerify { repository.stopTracking("entry-1") }
+            coVerify { repository.stopTracking("entry-1", any()) }
         }
     }
 
@@ -476,7 +479,7 @@ class TrackingStateMachineTest {
             assertTrue(newState is TrackingState.Idle)
 
             coVerify { repository.stopPause("entry-1") }
-            coVerify { repository.stopTracking("entry-1") }
+            coVerify { repository.stopTracking("entry-1", any()) }
             coVerify { stateStorage.saveState(TrackingState.Idle) }
         }
     }

@@ -2,6 +2,9 @@ package com.example.worktimetracker
 
 import android.app.Application
 import android.util.Log
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
+import com.example.worktimetracker.service.CommuteReminderScheduler
 import com.example.worktimetracker.service.GeofenceRegistrar
 import com.example.worktimetracker.service.NotificationChannelManager
 import com.example.worktimetracker.service.TrackingServiceManager
@@ -12,7 +15,10 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltAndroidApp
-class WorkTimeTrackerApp : Application() {
+class WorkTimeTrackerApp : Application(), Configuration.Provider {
+
+    @Inject
+    lateinit var workerFactory: HiltWorkerFactory
 
     @Inject
     lateinit var notificationChannelManager: NotificationChannelManager
@@ -23,7 +29,15 @@ class WorkTimeTrackerApp : Application() {
     @Inject
     lateinit var geofenceRegistrar: GeofenceRegistrar
 
+    @Inject
+    lateinit var commuteReminderScheduler: CommuteReminderScheduler
+
     private val appScope = CoroutineScope(Dispatchers.Default)
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .build()
 
     override fun onCreate() {
         super.onCreate()
@@ -42,5 +56,8 @@ class WorkTimeTrackerApp : Application() {
                 Log.e("WorkTimeTrackerApp", "Failed to register geofences at app start", e)
             }
         }
+
+        // Schedule commute reminder checks
+        commuteReminderScheduler.scheduleReminders()
     }
 }
