@@ -57,17 +57,10 @@ class TrackingForegroundService : Service() {
         // Ensure notification channels are created
         channelManager.createChannels()
 
-        // Start BLE beacon scanning
+        // Start BLE beacon scanning with time window scheduling
         if (!isBeaconScanningStarted) {
-            serviceScope.launch {
-                try {
-                    beaconScanner.startMonitoring()
-                    isBeaconScanningStarted = true
-                } catch (e: Exception) {
-                    // Log error but don't crash the service
-                    // Beacon scanning is optional and may not be configured
-                }
-            }
+            beaconScanner.startScheduledMonitoring()
+            isBeaconScanningStarted = true
         }
 
         // Start observing state machine (protect against multiple onCreate calls)
@@ -114,9 +107,9 @@ class TrackingForegroundService : Service() {
         stateJob = null
         cancelPeriodicUpdates()
 
-        // Stop beacon scanning
+        // Stop beacon scanning (including schedule)
         if (isBeaconScanningStarted) {
-            beaconScanner.stopMonitoring()
+            beaconScanner.stopScheduledMonitoring()
             isBeaconScanningStarted = false
         }
 

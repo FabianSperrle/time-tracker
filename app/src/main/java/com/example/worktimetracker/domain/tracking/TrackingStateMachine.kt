@@ -88,7 +88,7 @@ class TrackingStateMachine @Inject constructor(
                 handleGeofenceExitedWhileTracking(currentState, event)
             }
             is TrackingEvent.BeaconLost -> {
-                handleBeaconLost(currentState)
+                handleBeaconLost(currentState, event)
             }
             is TrackingEvent.ManualStop -> {
                 handleManualStop(currentState.entryId)
@@ -230,13 +230,19 @@ class TrackingStateMachine @Inject constructor(
         )
     }
 
-    private suspend fun handleBeaconLost(currentState: TrackingState.Tracking): TrackingState? {
+    private suspend fun handleBeaconLost(
+        currentState: TrackingState.Tracking,
+        event: TrackingEvent.BeaconLost
+    ): TrackingState? {
         if (currentState.type != TrackingType.HOME_OFFICE) {
             return null
         }
 
-        // Stop tracking
-        repository.stopTracking(currentState.entryId)
+        // Use lastSeenTimestamp for end time correction (AC #5):
+        // When beacon is lost due to timeout, the actual end of work is when
+        // the beacon was last seen, not when the timeout expired.
+        val endTime = event.lastSeenTimestamp ?: event.timestamp
+        repository.stopTracking(currentState.entryId, endTime = endTime)
         commutePhaseTracker.reset()
         return TrackingState.Idle
     }

@@ -22,6 +22,8 @@ import org.altbeacon.beacon.Region
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,6 +32,9 @@ import javax.inject.Singleton
  *
  * Scans for configured iBeacon and triggers tracking events based on
  * beacon presence/absence with a configurable timeout mechanism.
+ *
+ * Scanning is only active within the configured time window (default 06:00-22:00).
+ * Outside the window, the scanner is stopped to save battery.
  */
 @Singleton
 class BeaconScanner @Inject constructor(
@@ -45,6 +50,9 @@ class BeaconScanner @Inject constructor(
 
     private var currentRegion: Region? = null
     private var currentConfig: BeaconConfig? = null
+    private var scheduleJob: Job? = null
+    var isMonitoringActive: Boolean = false
+        private set
 
     /**
      * Retrieves the current beacon configuration from settings.
@@ -65,8 +73,11 @@ class BeaconScanner @Inject constructor(
 
     /**
      * Starts monitoring for the configured beacon.
+     * Configures BeaconManager, sets up callbacks, and begins region monitoring.
      */
     suspend fun startMonitoring() {
+        if (isMonitoringActive) return
+
         val config = getBeaconConfig()
         currentConfig = config
 
@@ -94,17 +105,25 @@ class BeaconScanner @Inject constructor(
             backgroundBetweenScanPeriod = config.scanIntervalMs
         }
 
-        // Set up monitoring callbacks
+        // Set up monitoring callbacks with exception handling (Finding 4)
         beaconManager.addMonitorNotifier(object : MonitorNotifier {
             override fun didEnterRegion(region: Region) {
                 scope.launch {
-                    onBeaconDetected()
+                    try {
+                        onBeaconDetected()
+                    } catch (e: Exception) {
+                        // Gracefully handle errors (e.g. config not available)
+                    }
                 }
             }
 
             override fun didExitRegion(region: Region) {
                 scope.launch {
-                    onBeaconLostFromRegion()
+                    try {
+                        onBeaconLostFromRegion()
+                    } catch (e: Exception) {
+                        // Gracefully handle errors
+                    }
                 }
             }
 
@@ -116,18 +135,84 @@ class BeaconScanner @Inject constructor(
         // Start monitoring
         beaconManager.startMonitoring(region)
         beaconManager.startRangingBeacons(region)
+        isMonitoringActive = true
     }
 
     /**
-     * Stops monitoring for beacons.
+     * Stops monitoring for beacons and resets all state.
      */
     fun stopMonitoring() {
         currentRegion?.let { region ->
             beaconManager.stopMonitoring(region)
             beaconManager.stopRangingBeacons(region)
         }
+        currentRegion = null
+        currentConfig = null
         timeoutJob?.cancel()
         timeoutJob = null
+        lastSeenTimestamp = null
+        isMonitoringActive = false
+    }
+
+    /**
+     * Starts scheduled monitoring that respects the configured time window.
+     *
+     * If the current time is within the window, monitoring starts immediately.
+     * If outside the window, scheduling waits until the window opens.
+     * When the window closes, monitoring is stopped automatically.
+     */
+    fun startScheduledMonitoring() {
+        scheduleJob?.cancel()
+        scheduleJob = scope.launch {
+            while (true) {
+                val config = try {
+                    getBeaconConfig()
+                } catch (e: Exception) {
+                    // Beacon not configured, retry in 5 minutes
+                    delay(5 * 60_000L)
+                    continue
+                }
+
+                val now = LocalTime.now()
+                val window = config.validTimeWindow
+
+                if (isTimeInWindow(now, window)) {
+                    // Inside time window - start monitoring if not already active
+                    if (!isMonitoringActive) {
+                        try {
+                            startMonitoring()
+                        } catch (e: Exception) {
+                            // Failed to start, retry in 1 minute
+                            delay(60_000L)
+                            continue
+                        }
+                    }
+                    // Wait until end of window, then stop
+                    val delayUntilEnd = millisUntilTime(now, window.end)
+                    delay(delayUntilEnd)
+                    stopMonitoring()
+                } else {
+                    // Outside time window - ensure monitoring is stopped
+                    if (isMonitoringActive) {
+                        stopMonitoring()
+                    }
+                    // Wait until start of window
+                    val delayUntilStart = millisUntilTime(now, window.start)
+                    delay(delayUntilStart)
+                }
+            }
+        }
+    }
+
+    /**
+     * Stops the scheduled monitoring loop and any active monitoring.
+     */
+    fun stopScheduledMonitoring() {
+        scheduleJob?.cancel()
+        scheduleJob = null
+        if (isMonitoringActive) {
+            stopMonitoring()
+        }
     }
 
     /**
@@ -157,10 +242,17 @@ class BeaconScanner @Inject constructor(
         // Cancel any existing timeout job
         timeoutJob?.cancel()
 
+        // Capture lastSeenTimestamp before the delay so the end time reflects
+        // when the beacon was actually last seen, not when the timeout fires.
+        val lastSeen = lastSeenTimestamp
+
         // Start new timeout countdown
         timeoutJob = scope.launch {
             delay(config.timeoutMinutes * 60_000L)
-            stateMachine.processEvent(TrackingEvent.BeaconLost())
+            val lastSeenLocal = lastSeen?.let {
+                LocalDateTime.ofInstant(it, ZoneId.systemDefault())
+            }
+            stateMachine.processEvent(TrackingEvent.BeaconLost(lastSeenTimestamp = lastSeenLocal))
         }
     }
 
@@ -170,8 +262,7 @@ class BeaconScanner @Inject constructor(
     private fun isInValidTimeWindow(): Boolean {
         val config = currentConfig ?: return false
         val now = LocalTime.now()
-        return !now.isBefore(config.validTimeWindow.start) &&
-                !now.isAfter(config.validTimeWindow.end)
+        return isTimeInWindow(now, config.validTimeWindow)
     }
 
     /**
@@ -179,4 +270,29 @@ class BeaconScanner @Inject constructor(
      * Used for end time correction in state machine.
      */
     fun getLastSeenTimestamp(): Instant? = lastSeenTimestamp
+
+    companion object {
+        /**
+         * Checks if the given time is within the specified window.
+         */
+        fun isTimeInWindow(time: LocalTime, window: TimeWindow): Boolean {
+            return !time.isBefore(window.start) && !time.isAfter(window.end)
+        }
+
+        /**
+         * Calculates the milliseconds from the current time until the target time.
+         * If the target time is before or equal to the current time, assumes it is the next day.
+         */
+        fun millisUntilTime(now: LocalTime, target: LocalTime): Long {
+            val nowNanos = now.toNanoOfDay()
+            val targetNanos = target.toNanoOfDay()
+            val diffNanos = if (targetNanos > nowNanos) {
+                targetNanos - nowNanos
+            } else {
+                // Target is tomorrow
+                (24L * 60 * 60 * 1_000_000_000) - nowNanos + targetNanos
+            }
+            return diffNanos / 1_000_000 // Convert to millis
+        }
+    }
 }

@@ -326,7 +326,8 @@ class TrackingStateMachineTest {
     fun `TRACKING to IDLE on BeaconLost after timeout`() = runTest {
         // Arrange: Start tracking via beacon
         val startTime = LocalDateTime.of(2026, 2, 9, 9, 0)
-        val lostTime = LocalDateTime.of(2026, 2, 9, 18, 0)
+        val lostTime = LocalDateTime.of(2026, 2, 9, 18, 10) // Timeout fires at 18:10
+        val lastSeenTime = LocalDateTime.of(2026, 2, 9, 18, 0) // Beacon last seen at 18:00
 
         val trackingEntry = TrackingEntry(
             id = "entry-1",
@@ -346,14 +347,85 @@ class TrackingStateMachineTest {
             stateMachine.processEvent(TrackingEvent.BeaconDetected("beacon-uuid", startTime))
             assertTrue(awaitItem() is TrackingState.Tracking)
 
-            // Beacon lost
-            stateMachine.processEvent(TrackingEvent.BeaconLost(lostTime))
+            // Beacon lost with lastSeenTimestamp for end time correction
+            stateMachine.processEvent(
+                TrackingEvent.BeaconLost(
+                    timestamp = lostTime,
+                    lastSeenTimestamp = lastSeenTime
+                )
+            )
 
             // Assert
             val newState = awaitItem()
             assertTrue(newState is TrackingState.Idle)
 
-            coVerify { repository.stopTracking("entry-1", any()) }
+            // Verify end time uses lastSeenTimestamp (18:00), not timeout time (18:10)
+            coVerify { repository.stopTracking("entry-1", endTime = lastSeenTime) }
+        }
+    }
+
+    @Test
+    fun `TRACKING to IDLE on BeaconLost without lastSeenTimestamp uses event timestamp`() = runTest {
+        // Arrange
+        val startTime = LocalDateTime.of(2026, 2, 9, 9, 0)
+        val lostTime = LocalDateTime.of(2026, 2, 9, 18, 10)
+
+        val trackingEntry = TrackingEntry(
+            id = "entry-1",
+            date = startTime.toLocalDate(),
+            type = TrackingType.HOME_OFFICE,
+            startTime = startTime,
+            endTime = null,
+            autoDetected = true
+        )
+        coEvery { repository.startTracking(TrackingType.HOME_OFFICE, true) } returns trackingEntry
+
+        // Act
+        stateMachine.state.test {
+            assertEquals(TrackingState.Idle, awaitItem())
+
+            stateMachine.processEvent(TrackingEvent.BeaconDetected("beacon-uuid", startTime))
+            assertTrue(awaitItem() is TrackingState.Tracking)
+
+            // BeaconLost without lastSeenTimestamp
+            stateMachine.processEvent(TrackingEvent.BeaconLost(timestamp = lostTime))
+
+            val newState = awaitItem()
+            assertTrue(newState is TrackingState.Idle)
+
+            // Falls back to event timestamp when lastSeenTimestamp is null
+            coVerify { repository.stopTracking("entry-1", endTime = lostTime) }
+        }
+    }
+
+    @Test
+    fun `TRACKING ignores BeaconLost for non-HOME_OFFICE tracking`() = runTest {
+        // Arrange: Start commute tracking (not home office)
+        val testTime = LocalDateTime.of(2026, 2, 9, 8, 0) // Monday
+        val trackingEntry = TrackingEntry(
+            id = "entry-1",
+            date = testTime.toLocalDate(),
+            type = TrackingType.COMMUTE_OFFICE,
+            startTime = testTime,
+            endTime = null,
+            autoDetected = true
+        )
+        coEvery { repository.startTracking(TrackingType.COMMUTE_OFFICE, true) } returns trackingEntry
+
+        val startEvent = TrackingEvent.GeofenceEntered(ZoneType.HOME_STATION, testTime)
+
+        // Act
+        stateMachine.state.test {
+            assertEquals(TrackingState.Idle, awaitItem())
+
+            stateMachine.processEvent(startEvent)
+            assertTrue(awaitItem() is TrackingState.Tracking)
+
+            // BeaconLost should be ignored for COMMUTE_OFFICE tracking
+            stateMachine.processEvent(TrackingEvent.BeaconLost())
+
+            expectNoEvents()
+            coVerify(exactly = 0) { repository.stopTracking(any(), any()) }
         }
     }
 

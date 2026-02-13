@@ -47,9 +47,11 @@ sealed class TrackingEvent {
      * BLE beacon was lost (not detected for timeout period).
      *
      * @property timestamp When the event occurred
+     * @property lastSeenTimestamp When the beacon was last seen (for end time correction)
      */
     data class BeaconLost(
-        val timestamp: LocalDateTime = LocalDateTime.now()
+        val timestamp: LocalDateTime = LocalDateTime.now(),
+        val lastSeenTimestamp: LocalDateTime? = null
     ) : TrackingEvent()
 
     // ========== Manual Triggers ==========
