@@ -2,11 +2,9 @@ package com.example.worktimetracker.service
 
 import com.example.worktimetracker.data.settings.SettingsProvider
 import com.example.worktimetracker.di.BeaconScannerScope
+import com.example.worktimetracker.domain.homeoffice.HomeOfficeTracker
 import com.example.worktimetracker.domain.model.BeaconConfig
 import com.example.worktimetracker.domain.model.TimeWindow
-import com.example.worktimetracker.domain.tracking.TrackingEvent
-import com.example.worktimetracker.domain.tracking.TrackingState
-import com.example.worktimetracker.domain.tracking.TrackingStateMachine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -40,7 +38,7 @@ import javax.inject.Singleton
 class BeaconScanner @Inject constructor(
     private val beaconManager: BeaconManager,
     private val settingsProvider: SettingsProvider,
-    private val stateMachine: TrackingStateMachine,
+    private val homeOfficeTracker: HomeOfficeTracker,
     @BeaconScannerScope private val scope: CoroutineScope
 ) {
 
@@ -226,10 +224,9 @@ class BeaconScanner @Inject constructor(
         timeoutJob?.cancel()
         timeoutJob = null
 
-        // Only trigger event if currently idle and within valid time window
-        if (stateMachine.state.value is TrackingState.Idle && isInValidTimeWindow()) {
-            stateMachine.processEvent(TrackingEvent.BeaconDetected(uuid = config.uuid))
-        }
+        // Delegate to HomeOfficeTracker for business logic
+        val now = LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault())
+        homeOfficeTracker.onBeaconDetected(uuid = config.uuid, timestamp = now)
     }
 
     /**
@@ -249,10 +246,12 @@ class BeaconScanner @Inject constructor(
         // Start new timeout countdown
         timeoutJob = scope.launch {
             delay(config.timeoutMinutes * 60_000L)
+            val now = LocalDateTime.now()
             val lastSeenLocal = lastSeen?.let {
                 LocalDateTime.ofInstant(it, ZoneId.systemDefault())
             }
-            stateMachine.processEvent(TrackingEvent.BeaconLost(lastSeenTimestamp = lastSeenLocal))
+            // Delegate to HomeOfficeTracker for business logic
+            homeOfficeTracker.onBeaconTimeout(timestamp = now, lastSeenTimestamp = lastSeenLocal)
         }
     }
 

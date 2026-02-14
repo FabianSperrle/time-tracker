@@ -1,17 +1,13 @@
 package com.example.worktimetracker.service
 
 import com.example.worktimetracker.data.settings.SettingsProvider
+import com.example.worktimetracker.domain.homeoffice.HomeOfficeTracker
 import com.example.worktimetracker.domain.model.BeaconConfig
 import com.example.worktimetracker.domain.model.TimeWindow
-import com.example.worktimetracker.domain.tracking.TrackingEvent
-import com.example.worktimetracker.domain.tracking.TrackingState
-import com.example.worktimetracker.domain.tracking.TrackingStateMachine
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -47,11 +43,10 @@ class BeaconScannerTest {
 
     private lateinit var beaconManager: BeaconManager
     private lateinit var settingsProvider: SettingsProvider
-    private lateinit var stateMachine: TrackingStateMachine
+    private lateinit var homeOfficeTracker: HomeOfficeTracker
     private lateinit var beaconScanner: BeaconScanner
     private lateinit var testScope: TestScope
     private val testDispatcher = StandardTestDispatcher()
-    private lateinit var stateFlow: MutableStateFlow<TrackingState>
 
     private val testUuid = "FDA50693-A4E2-4FB1-AFCF-C6EB07647825"
     private val testConfig = BeaconConfig(
@@ -69,19 +64,17 @@ class BeaconScannerTest {
         testScope = TestScope(testDispatcher)
         beaconManager = mockk(relaxed = true)
         settingsProvider = mockk()
-        stateMachine = mockk(relaxed = true)
-        stateFlow = MutableStateFlow<TrackingState>(TrackingState.Idle)
+        homeOfficeTracker = mockk(relaxed = true)
 
         every { settingsProvider.beaconUuid } returns flowOf(testConfig.uuid)
         every { settingsProvider.bleScanInterval } returns flowOf(testConfig.scanIntervalMs)
         every { settingsProvider.beaconTimeout } returns flowOf(testConfig.timeoutMinutes)
         every { settingsProvider.workTimeWindow } returns flowOf(testConfig.validTimeWindow)
-        every { stateMachine.state } returns stateFlow
 
         beaconScanner = BeaconScanner(
             beaconManager = beaconManager,
             settingsProvider = settingsProvider,
-            stateMachine = stateMachine,
+            homeOfficeTracker = homeOfficeTracker,
             scope = testScope
         )
     }
@@ -175,9 +168,8 @@ class BeaconScannerTest {
         }
 
         @Test
-        fun `onBeaconDetected triggers BeaconDetected event when idle and in time window`() = testScope.runTest {
+        fun `onBeaconDetected delegates to HomeOfficeTracker`() = testScope.runTest {
             // Arrange
-            stateFlow.value = TrackingState.Idle
             setCurrentConfig()
 
             // Act
@@ -185,25 +177,8 @@ class BeaconScannerTest {
 
             // Assert
             coVerify {
-                stateMachine.processEvent(match { it is TrackingEvent.BeaconDetected && it.uuid == testUuid })
+                homeOfficeTracker.onBeaconDetected(uuid = testUuid, timestamp = any())
             }
-        }
-
-        @Test
-        fun `onBeaconDetected does not trigger event when already tracking`() = testScope.runTest {
-            // Arrange
-            stateFlow.value = TrackingState.Tracking(
-                entryId = "entry-1",
-                type = com.example.worktimetracker.data.local.entity.TrackingType.HOME_OFFICE,
-                startTime = java.time.LocalDateTime.now()
-            )
-            setCurrentConfig()
-
-            // Act
-            beaconScanner.onBeaconDetected()
-
-            // Assert: should not trigger BeaconDetected event
-            coVerify(exactly = 0) { stateMachine.processEvent(any<TrackingEvent.BeaconDetected>()) }
         }
     }
 
@@ -225,7 +200,7 @@ class BeaconScannerTest {
         }
 
         @Test
-        fun `timeout triggers BeaconLost event after configured minutes`() = testScope.runTest {
+        fun `timeout triggers HomeOfficeTracker after configured minutes`() = testScope.runTest {
             // Arrange
             setCurrentConfig()
             // Simulate a beacon detection first to set lastSeenTimestamp
@@ -237,9 +212,7 @@ class BeaconScannerTest {
 
             // Assert
             coVerify {
-                stateMachine.processEvent(match {
-                    it is TrackingEvent.BeaconLost && it.lastSeenTimestamp != null
-                })
+                homeOfficeTracker.onBeaconTimeout(timestamp = any(), lastSeenTimestamp = any())
             }
         }
 
@@ -253,7 +226,7 @@ class BeaconScannerTest {
             advanceTimeBy(9 * 60_000L) // Only 9 minutes
 
             // Assert: event should NOT have been sent yet
-            coVerify(exactly = 0) { stateMachine.processEvent(any<TrackingEvent.BeaconLost>()) }
+            coVerify(exactly = 0) { homeOfficeTracker.onBeaconTimeout(any(), any()) }
         }
 
         @Test
@@ -273,9 +246,9 @@ class BeaconScannerTest {
             // Wait remaining time plus some extra
             advanceTimeBy(6 * 60_000L)
 
-            // Assert: BeaconLost should NOT have been triggered
+            // Assert: BeaconTimeout should NOT have been triggered (only 2 calls from onBeaconDetected)
             coVerify(exactly = 0) {
-                stateMachine.processEvent(match { it is TrackingEvent.BeaconLost })
+                homeOfficeTracker.onBeaconTimeout(any(), any())
             }
         }
 
@@ -299,11 +272,11 @@ class BeaconScannerTest {
 
             // Original 10 min mark (from first exit) - should not trigger
             advanceTimeBy(5 * 60_000L + 1)
-            coVerify(exactly = 0) { stateMachine.processEvent(any<TrackingEvent.BeaconLost>()) }
+            coVerify(exactly = 0) { homeOfficeTracker.onBeaconTimeout(any(), any()) }
 
             // 10 min from second exit
             advanceTimeBy(5 * 60_000L)
-            coVerify(exactly = 1) { stateMachine.processEvent(any<TrackingEvent.BeaconLost>()) }
+            coVerify(exactly = 1) { homeOfficeTracker.onBeaconTimeout(any(), any()) }
         }
 
         @Test
@@ -318,7 +291,7 @@ class BeaconScannerTest {
         }
 
         @Test
-        fun `BeaconLost event includes lastSeenTimestamp for end time correction`() = testScope.runTest {
+        fun `BeaconTimeout includes lastSeenTimestamp for end time correction`() = testScope.runTest {
             // Arrange: AC #5 - Endzeit auf letzten Beacon-Kontakt gesetzt
             setCurrentConfig()
             beaconScanner.onBeaconDetected()
@@ -329,11 +302,9 @@ class BeaconScannerTest {
             beaconScanner.onBeaconLostFromRegion()
             advanceTimeBy(10 * 60_000L + 1)
 
-            // Assert: BeaconLost event should carry lastSeenTimestamp
+            // Assert: onBeaconTimeout should be called with lastSeenTimestamp
             coVerify {
-                stateMachine.processEvent(match {
-                    it is TrackingEvent.BeaconLost && it.lastSeenTimestamp != null
-                })
+                homeOfficeTracker.onBeaconTimeout(timestamp = any(), lastSeenTimestamp = match { it != null })
             }
         }
     }
