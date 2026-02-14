@@ -89,4 +89,62 @@ class TrackingRepository @Inject constructor(
     suspend fun deleteEntry(entry: TrackingEntry) {
         trackingDao.delete(entry)
     }
+
+    fun getAllEntriesWithPauses(): Flow<List<TrackingEntryWithPauses>> {
+        return trackingDao.getAllEntriesWithPauses()
+    }
+
+    fun getEntryWithPausesById(entryId: String): Flow<TrackingEntryWithPauses?> {
+        return kotlinx.coroutines.flow.combine(
+            kotlinx.coroutines.flow.flow {
+                val entry = trackingDao.getEntryById(entryId)
+                emit(entry)
+            },
+            pauseDao.getPausesForEntry(entryId)
+        ) { entry, pauses ->
+            entry?.let { TrackingEntryWithPauses(it, pauses) }
+        }
+    }
+
+    suspend fun createEntry(
+        date: LocalDate,
+        type: TrackingType,
+        startTime: LocalDateTime,
+        endTime: LocalDateTime?,
+        notes: String? = null
+    ): String {
+        val entry = TrackingEntry(
+            date = date,
+            type = type,
+            startTime = startTime,
+            endTime = endTime,
+            autoDetected = false,
+            confirmed = false,
+            notes = notes
+        )
+        trackingDao.insert(entry)
+        return entry.id
+    }
+
+    suspend fun addPause(
+        entryId: String,
+        startTime: LocalDateTime,
+        endTime: LocalDateTime?
+    ): String {
+        val pause = Pause(
+            entryId = entryId,
+            startTime = startTime,
+            endTime = endTime
+        )
+        pauseDao.insert(pause)
+        return pause.id
+    }
+
+    suspend fun updatePause(pause: Pause) {
+        pauseDao.update(pause)
+    }
+
+    suspend fun deletePause(pause: Pause) {
+        pauseDao.delete(pause)
+    }
 }

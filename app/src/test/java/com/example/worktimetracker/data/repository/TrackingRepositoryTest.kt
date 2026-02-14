@@ -269,4 +269,166 @@ class TrackingRepositoryTest {
         assertFalse(result)
         coVerify { trackingDao.hasCompletedOfficeCommute(LocalDate.now()) }
     }
+
+    @Test
+    fun `getAllEntriesWithPauses returns all entries sorted by date descending`() = runTest {
+        val entry1 = TrackingEntry(
+            id = "1",
+            date = LocalDate.now(),
+            type = TrackingType.COMMUTE_OFFICE,
+            startTime = LocalDateTime.now().minusHours(2),
+            endTime = LocalDateTime.now(),
+            autoDetected = true
+        )
+        val entry2 = TrackingEntry(
+            id = "2",
+            date = LocalDate.now().minusDays(1),
+            type = TrackingType.HOME_OFFICE,
+            startTime = LocalDateTime.now().minusDays(1),
+            endTime = LocalDateTime.now().minusDays(1).plusHours(8),
+            autoDetected = false
+        )
+        val pause = Pause(
+            id = "p1",
+            entryId = "1",
+            startTime = LocalDateTime.now().minusHours(1),
+            endTime = LocalDateTime.now().minusMinutes(30)
+        )
+
+        every { trackingDao.getAllEntriesWithPauses() } returns flowOf(
+            listOf(
+                TrackingEntryWithPauses(entry1, listOf(pause)),
+                TrackingEntryWithPauses(entry2, emptyList())
+            )
+        )
+
+        repository.getAllEntriesWithPauses().test {
+            val result = awaitItem()
+            assertEquals(2, result.size)
+            assertEquals("1", result[0].entry.id)
+            assertEquals("2", result[1].entry.id)
+            assertEquals(1, result[0].pauses.size)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `getEntryWithPausesById returns entry with pauses when exists`() = runTest {
+        val entry = TrackingEntry(
+            id = "1",
+            date = LocalDate.now(),
+            type = TrackingType.COMMUTE_OFFICE,
+            startTime = LocalDateTime.now().minusHours(8),
+            endTime = LocalDateTime.now(),
+            autoDetected = true
+        )
+        val pause = Pause(
+            id = "p1",
+            entryId = "1",
+            startTime = LocalDateTime.now().minusHours(4),
+            endTime = LocalDateTime.now().minusHours(3).minusMinutes(30)
+        )
+        coEvery { trackingDao.getEntryById("1") } returns entry
+        every { pauseDao.getPausesForEntry("1") } returns flowOf(listOf(pause))
+
+        repository.getEntryWithPausesById("1").test {
+            val result = awaitItem()
+            assertNotNull(result)
+            assertEquals("1", result?.entry?.id)
+            assertEquals(1, result?.pauses?.size)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `getEntryWithPausesById returns null when entry does not exist`() = runTest {
+        coEvery { trackingDao.getEntryById("nonexistent") } returns null
+        every { pauseDao.getPausesForEntry("nonexistent") } returns flowOf(emptyList())
+
+        repository.getEntryWithPausesById("nonexistent").test {
+            val result = awaitItem()
+            assertNull(result)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `createEntry inserts new entry with provided data`() = runTest {
+        val entrySlot = slot<TrackingEntry>()
+        coEvery { trackingDao.insert(capture(entrySlot)) } returns Unit
+
+        val startTime = LocalDateTime.of(2026, 2, 10, 8, 0)
+        val endTime = LocalDateTime.of(2026, 2, 10, 16, 30)
+
+        val result = repository.createEntry(
+            date = LocalDate.of(2026, 2, 10),
+            type = TrackingType.MANUAL,
+            startTime = startTime,
+            endTime = endTime,
+            notes = "Manual entry"
+        )
+
+        val captured = entrySlot.captured
+        assertEquals(LocalDate.of(2026, 2, 10), captured.date)
+        assertEquals(TrackingType.MANUAL, captured.type)
+        assertEquals(startTime, captured.startTime)
+        assertEquals(endTime, captured.endTime)
+        assertFalse(captured.autoDetected)
+        assertFalse(captured.confirmed)
+        assertEquals("Manual entry", captured.notes)
+        assertEquals(captured.id, result)
+        coVerify { trackingDao.insert(any()) }
+    }
+
+    @Test
+    fun `addPause inserts new pause with provided data`() = runTest {
+        val pauseSlot = slot<Pause>()
+        coEvery { pauseDao.insert(capture(pauseSlot)) } returns Unit
+
+        val startTime = LocalDateTime.of(2026, 2, 10, 12, 0)
+        val endTime = LocalDateTime.of(2026, 2, 10, 12, 30)
+
+        val result = repository.addPause(
+            entryId = "entry-1",
+            startTime = startTime,
+            endTime = endTime
+        )
+
+        val captured = pauseSlot.captured
+        assertEquals("entry-1", captured.entryId)
+        assertEquals(startTime, captured.startTime)
+        assertEquals(endTime, captured.endTime)
+        assertEquals(captured.id, result)
+        coVerify { pauseDao.insert(any()) }
+    }
+
+    @Test
+    fun `updatePause updates existing pause`() = runTest {
+        val pause = Pause(
+            id = "p1",
+            entryId = "entry-1",
+            startTime = LocalDateTime.of(2026, 2, 10, 12, 0),
+            endTime = LocalDateTime.of(2026, 2, 10, 12, 30)
+        )
+        coEvery { pauseDao.update(pause) } returns Unit
+
+        repository.updatePause(pause)
+
+        coVerify { pauseDao.update(pause) }
+    }
+
+    @Test
+    fun `deletePause deletes existing pause`() = runTest {
+        val pause = Pause(
+            id = "p1",
+            entryId = "entry-1",
+            startTime = LocalDateTime.of(2026, 2, 10, 12, 0),
+            endTime = LocalDateTime.of(2026, 2, 10, 12, 30)
+        )
+        coEvery { pauseDao.delete(pause) } returns Unit
+
+        repository.deletePause(pause)
+
+        coVerify { pauseDao.delete(pause) }
+    }
 }

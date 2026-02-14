@@ -18,6 +18,10 @@ interface TrackingDao {
     fun getAllEntries(): Flow<List<TrackingEntry>>
 
     @Transaction
+    @Query("SELECT * FROM tracking_entries ORDER BY date DESC, startTime DESC")
+    fun getAllEntriesWithPauses(): Flow<List<TrackingEntryWithPauses>>
+
+    @Transaction
     @Query("SELECT * FROM tracking_entries WHERE date = :date")
     fun getEntriesByDateWithPauses(date: LocalDate): Flow<List<TrackingEntryWithPauses>>
 
