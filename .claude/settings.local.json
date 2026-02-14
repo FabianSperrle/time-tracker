@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew testDebugUnitTest:*)",
+      "Bash(./gradlew clean:*)",
+      "Bash(./gradlew assembleDebug:*)",
+      "Bash(find:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: F01 – Project Setup & Architektur\n\n- Jetpack Compose + Material 3 Setup\n- Hilt DI konfiguriert\n- Room Datenbank initialisiert\n- Navigation mit 4 Screens \\(Dashboard, Map, Entries, Settings\\)\n- MVVM + Repository Pattern\n- 14 Unit Tests \\(alle grün\\)\n\nReview: APPROVED \\(2 Iterationen\\)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit:*)",
+      "Bash(./gradlew test:*)",
+      "Bash(grep:*)",
+      "Bash(tee:*)",
+      "Bash(cd /Volumes/Externe\\\\ SSD/fabian/develop/time-tracker && ./gradlew lint:*)",
+      "Bash(./gradlew compileDebugKotlin:*)",
+      "Bash(ls /Volumes/Externe\\\\ SSD/fabian/develop/time-tracker*)"
+    ]
+  }
+}

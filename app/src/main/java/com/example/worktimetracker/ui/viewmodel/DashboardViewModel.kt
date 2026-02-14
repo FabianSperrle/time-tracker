@@ -3,12 +3,16 @@ package com.example.worktimetracker.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.worktimetracker.data.local.entity.TrackingType
+import com.example.worktimetracker.data.repository.TrackingRepository
+import com.example.worktimetracker.data.settings.SettingsProvider
+import com.example.worktimetracker.domain.model.DayStats
 import com.example.worktimetracker.domain.tracking.TrackingEvent
 import com.example.worktimetracker.domain.tracking.TrackingState
 import com.example.worktimetracker.domain.tracking.TrackingStateMachine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -36,11 +40,13 @@ sealed class DashboardUiState {
 
 /**
  * ViewModel for the Dashboard screen.
- * Handles manual tracking start/stop/pause/resume.
+ * Handles manual tracking start/stop/pause/resume and displays daily statistics.
  */
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
-    private val stateMachine: TrackingStateMachine
+    private val stateMachine: TrackingStateMachine,
+    private val repository: TrackingRepository,
+    private val settingsProvider: SettingsProvider
 ) : ViewModel() {
 
     /**
@@ -64,6 +70,22 @@ class DashboardViewModel @Inject constructor(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
         initialValue = DashboardUiState.Idle
+    )
+
+    /**
+     * Today's statistics (gross, net, pause, target, remaining).
+     */
+    val todayStats: StateFlow<DayStats> = combine(
+        repository.getTodayEntries(),
+        settingsProvider.weeklyTargetHours
+    ) { entries, weeklyTarget ->
+        // Calculate daily target: weekly target / 5 work days
+        val dailyTarget = weeklyTarget / 5f
+        DayStats.from(entries, dailyTarget)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = DayStats.EMPTY
     )
 
     /**

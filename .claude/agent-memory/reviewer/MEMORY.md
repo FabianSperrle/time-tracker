@@ -41,6 +41,27 @@
 - DI: Hilt
 - Testing: JUnit 5 (Jupiter) + Mockk + Turbine + Robolectric
 
+## F12 — Einträge bearbeiten & korrigieren
+
+### Review erfolgreich abgeschlossen (Iteration 2 - APPROVED)
+
+**Status:** APPROVED - Alle 6 Findings aus Iteration 1 behoben, 26 Tests (davon 5 neu), Code syntaktisch korrekt.
+
+### Kritische Patterns (Iteration 2)
+1. **Suspend Function für Race Condition**: saveEntry() ist suspend fun, alle Repository-Calls sequenziell (keine viewModelScope.launch)
+2. **State Tracking für Deletions**: originalPauses Field trackt geladene Pausen, saveEntry() vergleicht und löscht nicht-existierende
+3. **DatePicker State Management**: DatePickerState in lokalem Block erstellt, Update nur im confirmButton Callback
+4. **Pause Validierung Complete**: Prüft pause.startTime < pause.endTime UND zeitlichen Overlap UND Entry-Range
+5. **AssistedInject mit Factory**: Hilt 2.52+ required, Factory Pattern für optionale entryId
+
+### Findings Iteration 1 → Iteration 2 (Alle behoben)
+1. **CRITICAL DatePicker Race** → Suspend function + local state
+2. **MAJOR Pause Deletion** → originalPauses tracking + delete loop
+3. **MAJOR saveEntry() Race** → suspend fun pattern
+4. **MINOR AssistedInject Docs** → KDoc added
+5. **MINOR Validation Naming** → buildValidationMessages() with comments
+6. **MINOR Pause Validation** → pause.startTime >= pause.endTime check added
+
 ## F16 — Einstellungen (Settings)
 
 ### Review erfolgreich abgeschlossen (Iteration 1 - APPROVED)
