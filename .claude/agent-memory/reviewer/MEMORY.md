@@ -75,6 +75,34 @@
 4. Validierung: TimeWindow init-Block validiert Start < End, SettingsProvider validiert Ranges
 5. Multi-Select Dialog: Struktur vorhanden, UI folgt nächste Iteration (explizit dokumentiert - kein versteckter Fehler)
 
+## F15 — CSV-Export
+
+### Review erfolgreich abgeschlossen (Iteration 2 - APPROVED)
+
+**Status:** APPROVED - Alle 4 Findings aus Iteration 1 behoben, 15 Tests, Code RFC 4180 konform.
+
+### Wichtige Patterns erkannt
+1. **RFC 4180 CSV-Escaping**: escapeCsvField() checkt Semikolon/Quotes/Newlines, escaped Quotes durch Verdopplung
+2. **CSV-Parser in Tests**: parseCsvRow() implementiert echtes RFC 4180 Parsing für Validierung (nicht String-Matching)
+3. **UTF-8 BOM für Excel**: writer.write("\uFEFF") am Anfang für DACH-Region Excel-Kompatibilität
+4. **Suspend-fun Export**: export() ist suspend fun, repository.getEntriesInRange().first() für Coroutine-Integration
+5. **File Filtering**: filter { it.entry.endTime != null } entfernt incomplete entries vor Export
+
+### Findings Iteration 1 → Iteration 2 (Alle behoben)
+1. **CRITICAL LocalDate** → LocalDate.of(2026, 2, 10) korrekt
+2. **MAJOR RFC 4180** → escapeCsvField() implementiert mit Quote-Doubling
+3. **MAJOR CSV Parsing** → parseCsvRow() RFC 4180 konform, 3 neue Tests (Semicolons, Quotes, Newlines)
+4. **MINOR Spec Consistency** → CSV-Beispiel von Kommas auf Semikolons aktualisiert
+
+### Test-Verifikation
+- 15 Tests: 10 Original + 3 Escaping-Tests + 2 weitere
+- Alle Tests nutzen runTest{}, mockk(), CSV-Parser für echte Validierung
+- Coverage: Struktur, Formatierung, Dezimalstunden, Pausen, Escaping, Sortierung, Incomplete Entries
+
+### AC-Verifikation (7/7 erfüllt)
+- CSV mit 9 Spalten, Zeitraum wählbar, Share Intent, Excel-Kompatibilität (UTF-8 BOM, Semikolon)
+- Dezimalstunden korrekt (8h 22min → 8.37h), leere Tage gefiltert, Dateiname mit Zeitraum
+
 ## F05 — Permission Management & Onboarding
 
 ### Review erfolgreich abgeschlossen (Iteration 1 - APPROVED)

@@ -9,12 +9,17 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import java.io.File
 import javax.inject.Qualifier
 import javax.inject.Singleton
 
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class ServiceDispatcher
+
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class CacheDirectory
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -31,4 +36,13 @@ object TrackingModule {
     @Provides
     @ServiceDispatcher
     fun provideServiceDispatcher(): CoroutineDispatcher = Dispatchers.Default
+
+    @Provides
+    @CacheDirectory
+    @Singleton
+    fun provideCacheDirectory(
+        @ApplicationContext context: Context
+    ): File {
+        return context.cacheDir
+    }
 }

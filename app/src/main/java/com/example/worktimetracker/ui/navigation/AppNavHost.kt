@@ -1,6 +1,10 @@
 package com.example.worktimetracker.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -9,6 +13,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.example.worktimetracker.ui.screens.DashboardScreen
 import com.example.worktimetracker.ui.screens.EntriesScreen
+import com.example.worktimetracker.ui.screens.ExportDialog
 import com.example.worktimetracker.ui.screens.MapScreen
 import com.example.worktimetracker.ui.screens.OnboardingScreen
 import com.example.worktimetracker.ui.screens.SettingsScreen
@@ -42,14 +47,22 @@ fun AppNavHost(
             DashboardScreen()
         }
         composable(Screen.Week.route) {
+            var showExportDialog by remember { mutableStateOf(false) }
+
             WeekScreen(
                 onDayClick = { date ->
                     navController.navigate(Screen.DayView.createRoute(date.toString()))
                 },
                 onExportClick = {
-                    // F15 not yet implemented - placeholder
+                    showExportDialog = true
                 }
             )
+
+            if (showExportDialog) {
+                ExportDialog(
+                    onDismiss = { showExportDialog = false }
+                )
+            }
         }
         composable(
             route = Screen.DayView.route,
