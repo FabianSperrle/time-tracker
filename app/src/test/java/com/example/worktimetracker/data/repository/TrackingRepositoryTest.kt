@@ -271,7 +271,7 @@ class TrackingRepositoryTest {
     }
 
     @Test
-    fun `getAllEntriesWithPauses returns all entries sorted by date descending`() = runTest {
+    fun `getAllEntriesWithPauses returns only completed entries sorted by date descending`() = runTest {
         val entry1 = TrackingEntry(
             id = "1",
             date = LocalDate.now(),
@@ -308,6 +308,39 @@ class TrackingRepositoryTest {
             assertEquals("1", result[0].entry.id)
             assertEquals("2", result[1].entry.id)
             assertEquals(1, result[0].pauses.size)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `getAllEntriesWithPauses excludes active entries with null endTime`() = runTest {
+        val completedEntry = TrackingEntry(
+            id = "completed",
+            date = LocalDate.now(),
+            type = TrackingType.MANUAL,
+            startTime = LocalDateTime.now().minusHours(2),
+            endTime = LocalDateTime.now(),
+            autoDetected = false
+        )
+        val activeEntry = TrackingEntry(
+            id = "active",
+            date = LocalDate.now(),
+            type = TrackingType.HOME_OFFICE,
+            startTime = LocalDateTime.now().minusMinutes(30),
+            endTime = null,
+            autoDetected = true
+        )
+
+        // DAO should only return completed entries (endTime != null)
+        every { trackingDao.getAllEntriesWithPauses() } returns flowOf(
+            listOf(TrackingEntryWithPauses(completedEntry, emptyList()))
+        )
+
+        repository.getAllEntriesWithPauses().test {
+            val result = awaitItem()
+            assertEquals(1, result.size, "Only completed entry should be returned")
+            assertEquals("completed", result[0].entry.id)
+            assertEquals(TrackingType.MANUAL, result[0].entry.type)
             cancelAndIgnoreRemainingEvents()
         }
     }
