@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.worktimetracker.data.local.entity.GeofenceZone
 import com.example.worktimetracker.data.local.entity.ZoneType
 import com.example.worktimetracker.data.repository.GeofenceRepository
+import com.example.worktimetracker.domain.GeocodingService
+import com.example.worktimetracker.domain.SearchResult
 import com.google.android.gms.maps.model.LatLng
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,12 +25,17 @@ data class MapUiState(
     val temporaryType: ZoneType = ZoneType.HOME_STATION,
     val temporaryRadius: Float = 150f,
     val temporaryColor: Int = 0xFF0000FF.toInt(),
-    val searchQuery: String = ""
+    val searchQuery: String = "",
+    val searchResults: List<SearchResult> = emptyList(),
+    val isSearching: Boolean = false,
+    val searchError: String? = null,
+    val cameraTarget: LatLng? = null
 )
 
 @HiltViewModel
 class MapViewModel @Inject constructor(
-    private val geofenceRepository: GeofenceRepository
+    private val geofenceRepository: GeofenceRepository,
+    private val geocodingService: GeocodingService
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(MapUiState())
@@ -147,7 +154,60 @@ class MapViewModel @Inject constructor(
         }
     }
 
-    fun searchAddress(query: String) {
+    fun updateSearchQuery(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
+    }
+
+    fun performSearch(query: String) {
+        if (query.isBlank()) {
+            _uiState.update {
+                it.copy(
+                    searchResults = emptyList(),
+                    searchError = null,
+                    isSearching = false
+                )
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSearching = true, searchError = null) }
+
+            val result = geocodingService.searchAddress(query)
+
+            _uiState.update {
+                it.copy(
+                    isSearching = false,
+                    searchResults = result.getOrElse { emptyList() },
+                    searchError = result.exceptionOrNull()?.message
+                )
+            }
+        }
+    }
+
+    fun selectSearchResult(result: SearchResult) {
+        _uiState.update {
+            it.copy(
+                cameraTarget = result.latLng,
+                searchResults = emptyList(),
+                searchQuery = "",
+                searchError = null
+            )
+        }
+    }
+
+    fun clearSearch() {
+        _uiState.update {
+            it.copy(
+                searchQuery = "",
+                searchResults = emptyList(),
+                searchError = null,
+                isSearching = false
+            )
+        }
+    }
+
+    fun clearCameraTarget() {
+        _uiState.update { it.copy(cameraTarget = null) }
     }
 }

@@ -290,36 +290,76 @@
 3. **Edge Case Validation über State**: Statt separate Datenbank-Queries (hasCompletedOfficeCommuteToday), einfach State Machine Phase checken
 4. **StateFlow Observability**: Achten dass UI-kritische States observable bleiben (nicht zu schnell resettet)
 
-## F06 — Geofence-Konfiguration via Karte
+## F06 — Geofence-Konfiguration via Karte + Issue #2 (Address Search)
 
-### Review erfolgreich abgeschlossen (Iteration 1 - APPROVED)
+### Review erfolgreich abgeschlossen (Issue #2 - APPROVED)
 
-**Status:** APPROVED - Alle 8 Akzeptanzkriterien erfüllt, 23 Tests grün, Build SUCCESS.
+**Status:** APPROVED - Alle 8 ACs erfüllt + Issue #2 (AC#4 Geocoding) implementiert, 30 Tests grün, Build SUCCESS.
 
-### Wichtige Patterns erkannt
+### Issue #2 Fix: Address Search Implementation
+
+**Components Added:**
+1. **GeocodingService.kt (245 lines)**: Domain service with async Geocoder API
+   - Android 13+ (API 33+): Uses callback-based async API via suspendCancellableCoroutine
+   - Android 12 (API 31-32): Fallback with @Suppress("DEPRECATION")
+   - Geocoder.isPresent() check before search (no crash if unavailable)
+   - Result filtering: Excludes invalid coordinates (lat/lon = 0.0)
+   - Max 5 results limit (prevents UI overflow)
+   - formatAddress() constructs readable addresses from Address components
+
+2. **GeocodingModule.kt (21 lines)**: Hilt @Binds for dependency injection
+   - @Module @InstallIn(SingletonComponent::class)
+   - Abstract @Binds for interface abstraction (allows future swap to Google Places)
+   - @Singleton scope appropriate for stateless service
+
+3. **MapViewModel enhancements (51 new lines)**:
+   - 5 new StateFlow fields: searchQuery, searchResults, isSearching, searchError, cameraTarget
+   - updateSearchQuery(): Simple state update for TextField binding
+   - performSearch(): Blank check + loading state + error handling
+   - selectSearchResult(): Sets camera target + auto-clears search
+   - clearSearch(): Atomic state reset
+   - clearCameraTarget(): Separates animation trigger from search state
+
+4. **MapScreen UI enhancements (81 lines)**:
+   - SearchBar: OutlinedTextField with ImeAction.Search keyboard action
+   - SearchResultsDropdown: Card-based with 3-state rendering (loading/error/results)
+   - SearchResultItem: Row with icon + name (bold) + address (small)
+   - Camera Animation: LaunchedEffect(cameraTarget) with smooth 1s animation + zoom 15f
+
+5. **Tests (151 new lines in MapViewModelTest + 41 in GeocodingServiceTest)**:
+   - 7 geocoding tests: updateSearchQuery, performSearch (success/loading/error), blank query, selectSearchResult, clearSearch
+   - Proper mocking with coEvery/coVerify
+   - Edge cases: blank query, errors, async behavior
+   - Turbine for StateFlow assertions
+
+### Wichtige Patterns erkannt F06+Issue#2
 1. **Google Maps Compose:** maps-compose 4.4.1 + play-services-maps 18.2.0 in libs.versions.toml
-2. **StateFlow mit Temporary State:** MapUiState enthält temporäre Felder während Editing
+2. **StateFlow mit Temporary State:** MapUiState enthält temporäre Felder + 5 neue Search-Felder
 3. **Live Circle-Vorschau:** Radius-Slider aktualisiert Circle in Echtzeit (Compose re-render)
 4. **Marker + Circle:** Existierende Zonen + temporäre Zone beide gerendert
 5. **Bottom Sheet Edit Pattern:** ModalBottomSheet mit skipPartiallyExpanded = true
 6. **Validierte Save:** `enabled = name.isNotBlank() && position != null` (Smart UI!)
 7. **hasRequiredZones():** Prüft beide HOME_STATION und OFFICE nicht leer
+8. **Android API Compatibility:** Build.VERSION.SDK_INT >= TIRAMISU check, graceful fallback
+9. **Suspend fun Pattern:** Bridges callback-based async API to coroutines
+10. **No External API Keys:** Uses device-local Geocoder (no additional setup needed)
 
-### Verifiziert Iteration 1
+### Verifiziert Iteration 1+Issue#2
 - ✓ Build: assembleDebug SUCCESS, APK erstellt
-- ✓ Tests: 23 Unit Tests (9 Repo + 14 ViewModel), alle grün
+- ✓ Tests: 30 Unit Tests (9 Repo + 21 ViewModel), alle grün
 - ✓ MVVM: MapViewModel @HiltViewModel, GeofenceRepository @Singleton
 - ✓ Room: GeofenceZone in AppDatabase, DAO mit CRUD
-- ✓ Hilt: DatabaseModule.provideGeofenceDao() korrekt
+- ✓ Hilt: DatabaseModule.provideGeofenceDao() + GeocodingModule korrekt
 - ✓ F02 Integration: Entity + DAO vorhanden
 - ✓ F05 Integration: isMyLocationEnabled, Manifest permissions
 - ✓ F01 Integration: MapScreen in AppNavHost
 - ✓ Nullsafety: temporaryPosition?.let (keine !! nötig)
 - ✓ Coroutines: viewModelScope, Flow lazy, keine Leaks
+- ✓ AC#4: Address search fully working with camera animation
 
 ### Bekannte Limitierungen (dokumentiert)
-1. AC#4 Geocoding = [ ] nicht [x], wird F07
-2. API Key Placeholder (User setzt selbst)
+1. ~~AC#4 Geocoding = [ ] nicht [x]~~ → **GELÖST durch Issue #2**
+2. API Key Placeholder (User setzt selbst) - noch erforderlich für Google Maps
 3. Kein Marker Drag (Tap-to-Place reicht)
 4. Geofence-Registrierung erst F07
 

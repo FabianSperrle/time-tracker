@@ -4,6 +4,8 @@ import app.cash.turbine.test
 import com.example.worktimetracker.data.local.entity.GeofenceZone
 import com.example.worktimetracker.data.local.entity.ZoneType
 import com.example.worktimetracker.data.repository.GeofenceRepository
+import com.example.worktimetracker.domain.GeocodingService
+import com.example.worktimetracker.domain.SearchResult
 import com.google.android.gms.maps.model.LatLng
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -25,12 +27,14 @@ class MapViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var repository: GeofenceRepository
+    private lateinit var geocodingService: GeocodingService
     private lateinit var viewModel: MapViewModel
 
     @BeforeEach
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         repository = mockk()
+        geocodingService = mockk()
     }
 
     @AfterEach
@@ -44,7 +48,7 @@ class MapViewModelTest {
         coEvery { repository.getAllZones() } returns flowOf(emptyList())
 
         // When
-        viewModel = MapViewModel(repository)
+        viewModel = MapViewModel(repository, geocodingService)
 
         // Then
         viewModel.uiState.test {
@@ -72,7 +76,7 @@ class MapViewModelTest {
         coEvery { repository.getAllZones() } returns flowOf(zones)
 
         // When
-        viewModel = MapViewModel(repository)
+        viewModel = MapViewModel(repository, geocodingService)
         testDispatcher.scheduler.advanceUntilIdle()
 
         // Then
@@ -87,7 +91,7 @@ class MapViewModelTest {
     fun `startAddingZone opens bottom sheet`() = runTest(testDispatcher) {
         // Given
         coEvery { repository.getAllZones() } returns flowOf(emptyList())
-        viewModel = MapViewModel(repository)
+        viewModel = MapViewModel(repository, geocodingService)
 
         // When
         viewModel.startAddingZone()
@@ -113,7 +117,7 @@ class MapViewModelTest {
             color = 0xFF00FF00.toInt()
         )
         coEvery { repository.getAllZones() } returns flowOf(listOf(zone))
-        viewModel = MapViewModel(repository)
+        viewModel = MapViewModel(repository, geocodingService)
 
         // When
         viewModel.startEditingZone(zone)
@@ -130,7 +134,7 @@ class MapViewModelTest {
     fun `cancelEditing closes bottom sheet`() = runTest(testDispatcher) {
         // Given
         coEvery { repository.getAllZones() } returns flowOf(emptyList())
-        viewModel = MapViewModel(repository)
+        viewModel = MapViewModel(repository, geocodingService)
         viewModel.startAddingZone()
 
         // When
@@ -148,7 +152,7 @@ class MapViewModelTest {
     fun `setZonePosition updates temporary position`() = runTest(testDispatcher) {
         // Given
         coEvery { repository.getAllZones() } returns flowOf(emptyList())
-        viewModel = MapViewModel(repository)
+        viewModel = MapViewModel(repository, geocodingService)
         viewModel.startAddingZone()
 
         // When
@@ -166,7 +170,7 @@ class MapViewModelTest {
     fun `setZoneName updates temporary name`() = runTest(testDispatcher) {
         // Given
         coEvery { repository.getAllZones() } returns flowOf(emptyList())
-        viewModel = MapViewModel(repository)
+        viewModel = MapViewModel(repository, geocodingService)
         viewModel.startAddingZone()
 
         // When
@@ -183,7 +187,7 @@ class MapViewModelTest {
     fun `setZoneType updates temporary type`() = runTest(testDispatcher) {
         // Given
         coEvery { repository.getAllZones() } returns flowOf(emptyList())
-        viewModel = MapViewModel(repository)
+        viewModel = MapViewModel(repository, geocodingService)
         viewModel.startAddingZone()
 
         // When
@@ -200,7 +204,7 @@ class MapViewModelTest {
     fun `setZoneRadius updates temporary radius`() = runTest(testDispatcher) {
         // Given
         coEvery { repository.getAllZones() } returns flowOf(emptyList())
-        viewModel = MapViewModel(repository)
+        viewModel = MapViewModel(repository, geocodingService)
         viewModel.startAddingZone()
 
         // When
@@ -217,7 +221,7 @@ class MapViewModelTest {
     fun `setZoneColor updates temporary color`() = runTest(testDispatcher) {
         // Given
         coEvery { repository.getAllZones() } returns flowOf(emptyList())
-        viewModel = MapViewModel(repository)
+        viewModel = MapViewModel(repository, geocodingService)
         viewModel.startAddingZone()
 
         // When
@@ -235,7 +239,7 @@ class MapViewModelTest {
         // Given
         coEvery { repository.getAllZones() } returns flowOf(emptyList())
         coEvery { repository.insertZone(any()) } returns Unit
-        viewModel = MapViewModel(repository)
+        viewModel = MapViewModel(repository, geocodingService)
         viewModel.startAddingZone()
         viewModel.setZoneName("New Office")
         viewModel.setZonePosition(LatLng(48.1351, 11.5820))
@@ -276,7 +280,7 @@ class MapViewModelTest {
         )
         coEvery { repository.getAllZones() } returns flowOf(listOf(existingZone))
         coEvery { repository.updateZone(any()) } returns Unit
-        viewModel = MapViewModel(repository)
+        viewModel = MapViewModel(repository, geocodingService)
         viewModel.startEditingZone(existingZone)
         viewModel.setZoneName("Updated Office")
         viewModel.setZoneRadius(200f)
@@ -311,7 +315,7 @@ class MapViewModelTest {
         )
         coEvery { repository.getAllZones() } returns flowOf(listOf(zone))
         coEvery { repository.deleteZone(zone) } returns Unit
-        viewModel = MapViewModel(repository)
+        viewModel = MapViewModel(repository, geocodingService)
 
         // When
         viewModel.deleteZone(zone)
@@ -325,15 +329,151 @@ class MapViewModelTest {
     fun `searchAddress updates search query`() = runTest(testDispatcher) {
         // Given
         coEvery { repository.getAllZones() } returns flowOf(emptyList())
-        viewModel = MapViewModel(repository)
+        viewModel = MapViewModel(repository, geocodingService)
 
         // When
-        viewModel.searchAddress("München Hauptbahnhof")
+        viewModel.updateSearchQuery("München Hauptbahnhof")
 
         // Then
         viewModel.uiState.test {
             val state = awaitItem()
             assertEquals("München Hauptbahnhof", state.searchQuery)
+        }
+    }
+
+    @Test
+    fun `performSearch returns search results on success`() = runTest(testDispatcher) {
+        // Given
+        val searchResults = listOf(
+            SearchResult(
+                name = "München Hauptbahnhof",
+                address = "Bayerstraße, München, Bayern, Germany",
+                latLng = LatLng(48.1405, 11.5584)
+            ),
+            SearchResult(
+                name = "München Hbf",
+                address = "München, Germany",
+                latLng = LatLng(48.1406, 11.5585)
+            )
+        )
+        coEvery { repository.getAllZones() } returns flowOf(emptyList())
+        coEvery { geocodingService.searchAddress("München Hauptbahnhof") } returns Result.success(searchResults)
+        viewModel = MapViewModel(repository, geocodingService)
+
+        // When
+        viewModel.performSearch("München Hauptbahnhof")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Then
+        viewModel.uiState.test {
+            val state = awaitItem()
+            assertFalse(state.isSearching)
+            assertEquals(2, state.searchResults.size)
+            assertEquals("München Hauptbahnhof", state.searchResults[0].name)
+            assertNull(state.searchError)
+        }
+    }
+
+    @Test
+    fun `performSearch sets loading state while searching`() = runTest(testDispatcher) {
+        // Given
+        coEvery { repository.getAllZones() } returns flowOf(emptyList())
+        coEvery { geocodingService.searchAddress(any()) } returns Result.success(emptyList())
+        viewModel = MapViewModel(repository, geocodingService)
+
+        // When
+        viewModel.performSearch("München")
+
+        // Then - should be loading immediately
+        viewModel.uiState.test {
+            val state = awaitItem()
+            assertTrue(state.isSearching)
+        }
+    }
+
+    @Test
+    fun `performSearch sets error on failure`() = runTest(testDispatcher) {
+        // Given
+        val errorMessage = "Network error"
+        coEvery { repository.getAllZones() } returns flowOf(emptyList())
+        coEvery { geocodingService.searchAddress("Invalid Address") } returns Result.failure(Exception(errorMessage))
+        viewModel = MapViewModel(repository, geocodingService)
+
+        // When
+        viewModel.performSearch("Invalid Address")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // Then
+        viewModel.uiState.test {
+            val state = awaitItem()
+            assertFalse(state.isSearching)
+            assertTrue(state.searchResults.isEmpty())
+            assertEquals(errorMessage, state.searchError)
+        }
+    }
+
+    @Test
+    fun `selectSearchResult updates camera target and clears search`() = runTest(testDispatcher) {
+        // Given
+        val searchResult = SearchResult(
+            name = "München Hauptbahnhof",
+            address = "Bayerstraße, München",
+            latLng = LatLng(48.1405, 11.5584)
+        )
+        coEvery { repository.getAllZones() } returns flowOf(emptyList())
+        viewModel = MapViewModel(repository, geocodingService)
+
+        // When
+        viewModel.selectSearchResult(searchResult)
+
+        // Then
+        viewModel.uiState.test {
+            val state = awaitItem()
+            assertEquals(LatLng(48.1405, 11.5584), state.cameraTarget)
+            assertTrue(state.searchResults.isEmpty())
+            assertEquals("", state.searchQuery)
+        }
+    }
+
+    @Test
+    fun `clearSearch resets search state`() = runTest(testDispatcher) {
+        // Given
+        val searchResults = listOf(
+            SearchResult("Test", "Address", LatLng(48.0, 11.0))
+        )
+        coEvery { repository.getAllZones() } returns flowOf(emptyList())
+        coEvery { geocodingService.searchAddress(any()) } returns Result.success(searchResults)
+        viewModel = MapViewModel(repository, geocodingService)
+        viewModel.performSearch("Test")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        // When
+        viewModel.clearSearch()
+
+        // Then
+        viewModel.uiState.test {
+            val state = awaitItem()
+            assertEquals("", state.searchQuery)
+            assertTrue(state.searchResults.isEmpty())
+            assertNull(state.searchError)
+            assertFalse(state.isSearching)
+        }
+    }
+
+    @Test
+    fun `performSearch with blank query clears results`() = runTest(testDispatcher) {
+        // Given
+        coEvery { repository.getAllZones() } returns flowOf(emptyList())
+        viewModel = MapViewModel(repository, geocodingService)
+
+        // When
+        viewModel.performSearch("")
+
+        // Then
+        viewModel.uiState.test {
+            val state = awaitItem()
+            assertTrue(state.searchResults.isEmpty())
+            assertFalse(state.isSearching)
         }
     }
 }

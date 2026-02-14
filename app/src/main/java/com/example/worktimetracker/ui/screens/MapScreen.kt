@@ -9,6 +9,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -20,6 +22,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.worktimetracker.data.local.entity.GeofenceZone
@@ -43,12 +46,28 @@ fun MapScreen(
         )
     }
 
+    // Handle camera target updates
+    LaunchedEffect(uiState.cameraTarget) {
+        uiState.cameraTarget?.let { target ->
+            cameraPositionState.animate(
+                update = com.google.android.gms.maps.CameraUpdateFactory.newLatLngZoom(target, 15f),
+                durationMs = 1000
+            )
+            viewModel.clearCameraTarget()
+        }
+    }
+
     Scaffold(
         topBar = {
             SearchBar(
                 query = uiState.searchQuery,
-                onQueryChange = { viewModel.searchAddress(it) },
-                onSearch = { /* Geocoding will be implemented */ }
+                onQueryChange = { viewModel.updateSearchQuery(it) },
+                onSearch = { viewModel.performSearch(it) },
+                searchResults = uiState.searchResults,
+                isSearching = uiState.isSearching,
+                searchError = uiState.searchError,
+                onResultClick = { viewModel.selectSearchResult(it) },
+                onClearSearch = { viewModel.clearSearch() }
             )
         },
         floatingActionButton = {
@@ -160,22 +179,119 @@ fun MapScreen(
 private fun SearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
-    onSearch: (String) -> Unit
+    onSearch: (String) -> Unit,
+    searchResults: List<com.example.worktimetracker.domain.SearchResult>,
+    isSearching: Boolean,
+    searchError: String?,
+    onResultClick: (com.example.worktimetracker.domain.SearchResult) -> Unit,
+    onClearSearch: () -> Unit
 ) {
-    TopAppBar(
-        title = {
-            OutlinedTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                placeholder = { Text("Search address...") },
-                leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = "Search")
-                },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
+    Column {
+        TopAppBar(
+            title = {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    placeholder = { Text("Search address...") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = "Search")
+                    },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = onClearSearch) {
+                                Icon(Icons.Default.Delete, contentDescription = "Clear search")
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Search
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onSearch = { onSearch(query) }
+                    )
+                )
+            }
+        )
+
+        // Search Results Dropdown
+        if (searchResults.isNotEmpty() || isSearching || searchError != null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                when {
+                    isSearching -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                    searchError != null -> {
+                        Text(
+                            text = "Error: $searchError",
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                    searchResults.isNotEmpty() -> {
+                        LazyColumn(
+                            modifier = Modifier.heightIn(max = 200.dp)
+                        ) {
+                            items(searchResults) { result ->
+                                SearchResultItem(
+                                    result = result,
+                                    onClick = { onResultClick(result) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchResultItem(
+    result: com.example.worktimetracker.domain.SearchResult,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Default.LocationOn,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary
+        )
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = result.name,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = result.address,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-    )
+    }
+    HorizontalDivider()
 }
 
 @Composable
