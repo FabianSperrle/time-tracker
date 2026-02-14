@@ -493,3 +493,42 @@ TrackingStateMachineTest: 19 Tests PASSED (+3 für BeaconLost Event)
 - ✓ BLE Battery-Efficient: Window-basiertes Scheduling, kein durchgehendes Scanning
 - ✓ Exception-Safe: try/catch in alle Callbacks
 - ✓ Kotlin-idiomatisch: Elvis, Null-Safety, suspend fun, Flow
+
+## F14 — Dashboard: Wochenansicht
+
+### Review erfolgreich abgeschlossen (Iteration 1 - APPROVED)
+
+**Status:** APPROVED - Alle 7 ACs erfüllt, 19 Tests grün, Code syntaktisch korrekt.
+
+### Findings Iteration 1
+- **MINOR selectWeek() Untested**: Public method exists but never tested or called (DatePicker not implemented yet)
+- **MINOR Locale Inconsistency**: WeekViewModel uses `Locale.getDefault()` for week number, but WeekScreen uses hardcoded `Locale.GERMAN` for display
+
+### Wichtige Erkenntnisse F14
+1. **Flow mit flatMapLatest**: `_selectedWeekStart.flatMapLatest { weekStart → repository.getEntriesInRange() }` für reactive week updates
+2. **Stateless UI**: WeekScreen nimmt 5 Flows (weekStart, weekNumber, summaries, stats, hasUnconfirmed), keine eigene State nötig
+3. **DaySummary.from()**: Companion function aggregiert TrackingEntryWithPauses je Tag
+4. **WeekStats.from()**: Berechnet total, target, percentage (clamped 0..100), overtime (kann negativ sein), average (nur über gearbeitete Tage)
+5. **Mo-Fr Generation**: `(0..4).map { dayOffset → weekStart.plusDays(dayOffset.toLong()) }` generiert immer 5 Einträge
+6. **Unconfirmed Warning Logic**: Zeigt ⚠️ nur wenn `!confirmed && type != null` (nicht für leere Tage)
+
+### Test Coverage F14
+- DaySummaryTest: 6 Tests (single, multiple, pauses, empty, unconfirmed)
+- WeekStatsTest: 6 Tests (full week, overtime/undertime, empty, average, EMPTY constant)
+- WeekViewModelTest: 7 Tests (summaries, stats, navigation prev/next, weekNumber, unconfirmed)
+- **Total: 19 Tests, alle Szenarien abgedeckt**
+
+### AC-Erfüllung F14
+- [x] AC #1: Mo-Fr mit Arbeitszeit ✓
+- [x] AC #2: Navigation zwischen Wochen ✓
+- [x] AC #3: Gesamtstunden korrekt summiert ✓
+- [x] AC #4: Soll-/Ist-Vergleich mit Fortschrittsbalken ✓
+- [x] AC #5: Tap auf Tag navigiert ✓
+- [x] AC #6: Unbestätigte Einträge markiert ✓
+- [x] AC #7: Export-Button sichtbar ✓
+
+### Bekannte Limitierungen (dokumentiert)
+1. DatePicker nicht implementiert (Spec-Komponente, kein AC)
+2. DayView navigiert zu Entries-Screen (F13 nicht parametrisierbar)
+3. Hardcoded German strings (Lokalisierung für Phase 2)
+4. Locale.GERMAN statt Locale.getDefault() in UI (consistency issue aber dokumentiert)

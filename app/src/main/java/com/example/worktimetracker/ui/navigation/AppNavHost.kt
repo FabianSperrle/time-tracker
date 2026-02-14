@@ -3,13 +3,17 @@ package com.example.worktimetracker.ui.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import com.example.worktimetracker.ui.screens.DashboardScreen
 import com.example.worktimetracker.ui.screens.EntriesScreen
 import com.example.worktimetracker.ui.screens.MapScreen
 import com.example.worktimetracker.ui.screens.OnboardingScreen
 import com.example.worktimetracker.ui.screens.SettingsScreen
+import com.example.worktimetracker.ui.screens.WeekScreen
+import java.time.LocalDate
 
 /**
  * Main navigation host for the app.
@@ -17,7 +21,7 @@ import com.example.worktimetracker.ui.screens.SettingsScreen
 @Composable
 fun AppNavHost(
     navController: NavHostController,
-    startDestination: String = Screen.Dashboard.route,
+    startDestination: String = Screen.Week.route,
     modifier: Modifier = Modifier
 ) {
     NavHost(
@@ -28,7 +32,7 @@ fun AppNavHost(
         composable(Screen.Onboarding.route) {
             OnboardingScreen(
                 onComplete = {
-                    navController.navigate(Screen.Dashboard.route) {
+                    navController.navigate(Screen.Week.route) {
                         popUpTo(Screen.Onboarding.route) { inclusive = true }
                     }
                 }
@@ -36,6 +40,30 @@ fun AppNavHost(
         }
         composable(Screen.Dashboard.route) {
             DashboardScreen()
+        }
+        composable(Screen.Week.route) {
+            WeekScreen(
+                onDayClick = { date ->
+                    navController.navigate(Screen.DayView.createRoute(date.toString()))
+                },
+                onExportClick = {
+                    // F15 not yet implemented - placeholder
+                }
+            )
+        }
+        composable(
+            route = Screen.DayView.route,
+            arguments = listOf(
+                navArgument("date") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val dateString = backStackEntry.arguments?.getString("date")
+            val date = dateString?.let { LocalDate.parse(it) } ?: LocalDate.now()
+            // For now, navigate to entries screen filtered by date
+            // TODO: Implement dedicated DayViewScreen when needed
+            navController.navigate(Screen.Entries.route) {
+                popUpTo(Screen.Week.route)
+            }
         }
         composable(Screen.Map.route) {
             MapScreen()
