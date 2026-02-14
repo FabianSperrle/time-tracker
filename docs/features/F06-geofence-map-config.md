@@ -163,7 +163,10 @@ Bei jedem Speichern/Löschen/Ändern einer Zone wird automatisch die Geofence-Re
    - Camera Animation zur gefundenen Position
    - Fehlerbehandlung für ungültige Adressen
 
-2. **Google Maps API Key erforderlich:** In AndroidManifest.xml ist ein Platzhalter "YOUR_API_KEY_HERE" eingetragen. Der Nutzer muss einen eigenen API Key von Google Cloud Console anlegen und eintragen.
+2. **Google Maps API Key erforderlich:** ✅ **FIXED (Issue #1)** - Die App ist nun konfiguriert, um den API-Schlüssel aus `local.properties` oder Umgebungsvariablen zu lesen. Der Nutzer muss:
+   - `local.properties` im Projekt-Root erstellen
+   - `MAPS_API_KEY=<your_key>` hinzufügen
+   - Siehe **docs/GOOGLE_MAPS_SETUP.md** für detaillierte Anleitung
 
 3. **Marker Drag & Drop:** Zone-Verschiebung erfolgt derzeit durch Antippen auf der Karte während des Edit-Modus. Ein direktes Dragging des Markers ist nicht implementiert.
 

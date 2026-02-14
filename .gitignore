@@ -30,5 +30,8 @@ render.experimental.xml
 # Google Services (e.g. APIs or Firebase)
 google-services.json
 
+# Google Maps API Key (stored in local.properties)
+# local.properties is already gitignored above
+
 # Android Profiling
 *.hprof

@@ -1,0 +1,11 @@
+# Local Properties Template
+# Copy this file to 'local.properties' (without .template) and fill in your values
+# local.properties is gitignored and will NOT be committed
+
+## SDK Location (usually auto-configured by Android Studio)
+# sdk.dir=/path/to/Android/Sdk
+
+## Google Maps API Key (REQUIRED for F06 - Geofence Map Configuration)
+## Obtain from: https://console.cloud.google.com/
+## See docs/GOOGLE_MAPS_SETUP.md for detailed setup instructions
+MAPS_API_KEY=YOUR_API_KEY_HERE
