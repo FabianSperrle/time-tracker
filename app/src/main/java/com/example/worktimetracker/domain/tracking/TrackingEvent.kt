@@ -88,4 +88,10 @@ sealed class TrackingEvent {
      * App was restarted and needs to restore state.
      */
     object AppRestarted : TrackingEvent()
+
+    /**
+     * Midnight has passed while tracking is active.
+     * Triggers closing the current entry and starting a new one for the new day.
+     */
+    object MidnightRollover : TrackingEvent()
 }

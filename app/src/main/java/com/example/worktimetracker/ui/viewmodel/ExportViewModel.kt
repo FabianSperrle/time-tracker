@@ -79,7 +79,11 @@ class ExportViewModel @Inject constructor(
         viewModelScope.launch {
             _exportState.value = ExportState.Loading
             try {
-                val (start, end) = dateRange.value
+                val (start, end) = when (_selectedRange.value) {
+                    ExportRange.THIS_WEEK  -> getCurrentWeekRange()
+                    ExportRange.LAST_MONTH -> getLastMonthRange()
+                    ExportRange.CUSTOM     -> _customStartDate.value to _customEndDate.value
+                }
                 val file = csvExporter.export(start, end)
                 _exportState.value = ExportState.Success(file)
             } catch (e: Exception) {

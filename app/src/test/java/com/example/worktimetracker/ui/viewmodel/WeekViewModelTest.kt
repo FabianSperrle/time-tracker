@@ -12,7 +12,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -34,13 +34,14 @@ class WeekViewModelTest {
     private lateinit var settingsProvider: SettingsProvider
     private lateinit var viewModel: WeekViewModel
 
-    private val testDispatcher = StandardTestDispatcher()
+    private val testDispatcher = UnconfinedTestDispatcher()
 
     @BeforeEach
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         repository = mockk()
         settingsProvider = mockk()
+        every { repository.getAllEntriesWithPauses() } returns flowOf(emptyList())
     }
 
     @AfterEach
@@ -50,14 +51,14 @@ class WeekViewModelTest {
 
     @Test
     fun `weekSummaries emits daily summaries for current week`() = runTest {
-        val monday = LocalDate.of(2026, 2, 10) // KW 07
+        val monday = LocalDate.of(2026, 2, 16) // KW 08 – actual Monday of current week
         val entry1 = TrackingEntryWithPauses(
             entry = TrackingEntry(
                 id = "1",
                 date = monday,
                 type = TrackingType.HOME_OFFICE,
-                startTime = LocalDateTime.of(2026, 2, 10, 8, 0),
-                endTime = LocalDateTime.of(2026, 2, 10, 16, 0),
+                startTime = LocalDateTime.of(2026, 2, 16, 8, 0),
+                endTime = LocalDateTime.of(2026, 2, 16, 16, 0),
                 autoDetected = true,
                 confirmed = true
             ),
@@ -81,15 +82,15 @@ class WeekViewModelTest {
 
     @Test
     fun `weekStats calculates correct statistics`() = runTest {
-        val monday = LocalDate.of(2026, 2, 10)
+        val monday = LocalDate.of(2026, 2, 16) // KW 08
         val entries = listOf(
             TrackingEntryWithPauses(
                 entry = TrackingEntry(
                     id = "1",
                     date = monday,
                     type = TrackingType.HOME_OFFICE,
-                    startTime = LocalDateTime.of(2026, 2, 10, 8, 0),
-                    endTime = LocalDateTime.of(2026, 2, 10, 16, 0),
+                    startTime = LocalDateTime.of(2026, 2, 16, 8, 0),
+                    endTime = LocalDateTime.of(2026, 2, 16, 16, 0),
                     autoDetected = true,
                     confirmed = true
                 ),
@@ -100,8 +101,8 @@ class WeekViewModelTest {
                     id = "2",
                     date = monday.plusDays(1),
                     type = TrackingType.COMMUTE_OFFICE,
-                    startTime = LocalDateTime.of(2026, 2, 11, 7, 0),
-                    endTime = LocalDateTime.of(2026, 2, 11, 16, 0),
+                    startTime = LocalDateTime.of(2026, 2, 17, 7, 0),
+                    endTime = LocalDateTime.of(2026, 2, 17, 16, 0),
                     autoDetected = true,
                     confirmed = true
                 ),
@@ -161,14 +162,14 @@ class WeekViewModelTest {
 
     @Test
     fun `weekSummaries handles pauses correctly`() = runTest {
-        val monday = LocalDate.of(2026, 2, 10)
+        val monday = LocalDate.of(2026, 2, 16) // KW 08
         val entry = TrackingEntryWithPauses(
             entry = TrackingEntry(
                 id = "1",
                 date = monday,
                 type = TrackingType.HOME_OFFICE,
-                startTime = LocalDateTime.of(2026, 2, 10, 8, 0),
-                endTime = LocalDateTime.of(2026, 2, 10, 17, 0),
+                startTime = LocalDateTime.of(2026, 2, 16, 8, 0),
+                endTime = LocalDateTime.of(2026, 2, 16, 17, 0),
                 autoDetected = false,
                 confirmed = false
             ),
@@ -176,8 +177,8 @@ class WeekViewModelTest {
                 Pause(
                     id = "p1",
                     entryId = "1",
-                    startTime = LocalDateTime.of(2026, 2, 10, 12, 0),
-                    endTime = LocalDateTime.of(2026, 2, 10, 13, 0)
+                    startTime = LocalDateTime.of(2026, 2, 16, 12, 0),
+                    endTime = LocalDateTime.of(2026, 2, 16, 13, 0)
                 )
             )
         )
@@ -212,15 +213,15 @@ class WeekViewModelTest {
 
     @Test
     fun `hasUnconfirmedEntries is true when any entry is unconfirmed`() = runTest {
-        val monday = LocalDate.of(2026, 2, 10)
+        val monday = LocalDate.of(2026, 2, 16) // KW 08
         val entries = listOf(
             TrackingEntryWithPauses(
                 entry = TrackingEntry(
                     id = "1",
                     date = monday,
                     type = TrackingType.HOME_OFFICE,
-                    startTime = LocalDateTime.of(2026, 2, 10, 8, 0),
-                    endTime = LocalDateTime.of(2026, 2, 10, 16, 0),
+                    startTime = LocalDateTime.of(2026, 2, 16, 8, 0),
+                    endTime = LocalDateTime.of(2026, 2, 16, 16, 0),
                     autoDetected = true,
                     confirmed = false // Unconfirmed
                 ),

@@ -12,7 +12,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -96,6 +98,9 @@ class TrackingStateMachine @Inject constructor(
             is TrackingEvent.PauseStart -> {
                 handlePauseStart(currentState)
             }
+            is TrackingEvent.MidnightRollover -> {
+                handleMidnightRolloverWhileTracking(currentState)
+            }
             else -> null // Ignore other events in Tracking state
         }
     }
@@ -113,6 +118,9 @@ class TrackingStateMachine @Inject constructor(
             }
             is TrackingEvent.ManualStop -> {
                 handleManualStopWhilePaused(currentState)
+            }
+            is TrackingEvent.MidnightRollover -> {
+                handleMidnightRolloverWhilePaused(currentState)
             }
             else -> null // Ignore other events in Paused state
         }
@@ -295,6 +303,64 @@ class TrackingStateMachine @Inject constructor(
         return TrackingState.Idle
     }
 
+    // ========== Midnight Rollover ==========
+
+    private suspend fun handleMidnightRolloverWhileTracking(
+        currentState: TrackingState.Tracking
+    ): TrackingState {
+        val today = LocalDate.now()
+        val yesterday = today.minusDays(1)
+        val endOfYesterday = LocalDateTime.of(yesterday, LocalTime.of(23, 59, 59))
+        val startOfToday = LocalDateTime.of(today, LocalTime.MIDNIGHT)
+
+        // Stop old entry at end of yesterday
+        repository.stopTracking(currentState.entryId, endTime = endOfYesterday)
+
+        // Start new entry at start of today
+        val entry = repository.startTrackingAt(
+            type = currentState.type,
+            autoDetected = true,
+            startTime = startOfToday,
+            date = today
+        )
+
+        return TrackingState.Tracking(
+            entryId = entry.id,
+            type = entry.type,
+            startTime = entry.startTime
+        )
+    }
+
+    private suspend fun handleMidnightRolloverWhilePaused(
+        currentState: TrackingState.Paused
+    ): TrackingState {
+        val today = LocalDate.now()
+        val yesterday = today.minusDays(1)
+        val endOfYesterday = LocalDateTime.of(yesterday, LocalTime.of(23, 59, 59))
+        val startOfToday = LocalDateTime.of(today, LocalTime.MIDNIGHT)
+
+        // Close active pause and stop old entry
+        repository.stopPause(currentState.entryId)
+        repository.stopTracking(currentState.entryId, endTime = endOfYesterday)
+
+        // Start new entry at start of today
+        val entry = repository.startTrackingAt(
+            type = currentState.type,
+            autoDetected = true,
+            startTime = startOfToday,
+            date = today
+        )
+
+        // Start a new pause on the new entry
+        val pauseId = repository.startPause(entry.id)
+
+        return TrackingState.Paused(
+            entryId = entry.id,
+            type = entry.type,
+            pauseId = pauseId
+        )
+    }
+
     // ========== State Recovery ==========
 
     /**
@@ -333,6 +399,31 @@ class TrackingStateMachine @Inject constructor(
         // Save the validated state
         if (restoredState != savedState) {
             stateStorage.saveState(restoredState)
+        }
+
+        // Handle midnight rollover(s) for entries from previous days
+        performMidnightRolloverIfNeeded()
+    }
+
+    private suspend fun performMidnightRolloverIfNeeded() {
+        val today = LocalDate.now()
+        var currentState = _state.value
+
+        // Loop to handle multiple days (e.g., app not opened for several days)
+        while (currentState is TrackingState.Tracking || currentState is TrackingState.Paused) {
+            val entryDate = when (currentState) {
+                is TrackingState.Tracking -> currentState.startTime.toLocalDate()
+                is TrackingState.Paused -> {
+                    val entry = repository.getActiveEntry()
+                    entry?.startTime?.toLocalDate() ?: break
+                }
+                else -> break
+            }
+
+            if (!entryDate.isBefore(today)) break
+
+            processEvent(TrackingEvent.MidnightRollover)
+            currentState = _state.value
         }
     }
 

@@ -9,6 +9,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.example.worktimetracker.MainActivity
 import com.example.worktimetracker.R
+import com.example.worktimetracker.domain.tracking.TrackingEvent
 import com.example.worktimetracker.domain.tracking.TrackingState
 import com.example.worktimetracker.domain.tracking.TrackingStateMachine
 import dagger.hilt.android.AndroidEntryPoint
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.time.Duration
+import java.time.LocalDate
 import java.time.LocalDateTime
 import javax.inject.Inject
 
@@ -121,6 +123,13 @@ class TrackingForegroundService : Service() {
         updateJob = serviceScope.launch {
             while (isActive) {
                 delay(60_000) // Update every 60 seconds
+
+                // Check for midnight rollover
+                if (LocalDate.now() != state.startTime.toLocalDate()) {
+                    stateMachine.processEvent(TrackingEvent.MidnightRollover)
+                    return@launch // State change will trigger new periodic updates
+                }
+
                 updateNotification(state)
             }
         }

@@ -10,9 +10,14 @@ import com.example.worktimetracker.domain.tracking.TrackingEvent
 import com.example.worktimetracker.domain.tracking.TrackingState
 import com.example.worktimetracker.domain.tracking.TrackingStateMachine
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -42,6 +47,7 @@ sealed class DashboardUiState {
  * ViewModel for the Dashboard screen.
  * Handles manual tracking start/stop/pause/resume and displays daily statistics.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     private val stateMachine: TrackingStateMachine,
@@ -73,12 +79,30 @@ class DashboardViewModel @Inject constructor(
     )
 
     /**
+     * Ticker flow that emits every second while tracking is active.
+     * When idle, emits a single value (no periodic updates needed).
+     */
+    private val ticker = stateMachine.state.flatMapLatest { state ->
+        when (state) {
+            is TrackingState.Idle -> flowOf(Unit)
+            is TrackingState.Tracking, is TrackingState.Paused -> flow {
+                while (true) {
+                    emit(Unit)
+                    delay(1000L)
+                }
+            }
+        }
+    }
+
+    /**
      * Today's statistics (gross, net, pause, target, remaining).
+     * Updates every second while tracking is active.
      */
     val todayStats: StateFlow<DayStats> = combine(
         repository.getTodayEntries(),
-        settingsProvider.weeklyTargetHours
-    ) { entries, weeklyTarget ->
+        settingsProvider.weeklyTargetHours,
+        ticker
+    ) { entries, weeklyTarget, _ ->
         // Calculate daily target: weekly target / 5 work days
         val dailyTarget = weeklyTarget / 5f
         DayStats.from(entries, dailyTarget)

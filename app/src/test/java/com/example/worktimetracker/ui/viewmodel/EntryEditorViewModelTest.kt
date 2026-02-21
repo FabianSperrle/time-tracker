@@ -14,7 +14,7 @@ import io.mockk.slot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -33,7 +33,7 @@ class EntryEditorViewModelTest {
 
     private lateinit var repository: TrackingRepository
     private lateinit var viewModel: EntryEditorViewModel
-    private val testDispatcher = StandardTestDispatcher()
+    private val testDispatcher = UnconfinedTestDispatcher()
 
     @BeforeEach
     fun setup() {
@@ -503,9 +503,14 @@ class EntryEditorViewModelTest {
         viewModel = EntryEditorViewModel(repository, "1")
         testDispatcher.scheduler.advanceUntilIdle()
 
-        // Get the pause IDs from state
-        val pauseToRemove = viewModel.editorState.value.pauses.first { it.pauseEntity?.id == "p1" }
-        viewModel.removePause(pauseToRemove.id)
+        // Subscribe to editorState to activate the stateIn and get the loaded pauses
+        var pauseId: String? = null
+        viewModel.editorState.test {
+            val state = awaitItem()
+            pauseId = state.pauses.first { it.pauseEntity?.id == "p1" }.id
+            cancelAndIgnoreRemainingEvents()
+        }
+        viewModel.removePause(pauseId!!)
         testDispatcher.scheduler.advanceUntilIdle()
 
         val result = viewModel.saveEntry()

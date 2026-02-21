@@ -1,7 +1,7 @@
 package com.example.worktimetracker.ui.navigation
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.LocationOn
@@ -24,7 +24,7 @@ data class NavigationItem(
 )
 
 val navigationItems = listOf(
-    NavigationItem(Screen.Week, Icons.Default.CalendarToday, "Woche"),
+    NavigationItem(Screen.Week, Icons.Default.DateRange, "Woche"),
     NavigationItem(Screen.Dashboard, Icons.Default.Home, "Heute"),
     NavigationItem(Screen.Entries, Icons.Default.List, "Einträge"),
     NavigationItem(Screen.Settings, Icons.Default.Settings, "Settings")

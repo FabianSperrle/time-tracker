@@ -1,5 +1,7 @@
 package com.example.worktimetracker.ui.viewmodel
 
+import com.example.worktimetracker.data.local.entity.GeofenceZone
+import com.example.worktimetracker.data.repository.GeofenceRepository
 import com.example.worktimetracker.data.settings.SettingsProvider
 import com.example.worktimetracker.domain.model.TimeWindow
 import io.mockk.coEvery
@@ -29,6 +31,7 @@ import java.time.LocalTime
 class SettingsViewModelTest {
 
     private lateinit var settingsProvider: SettingsProvider
+    private lateinit var geofenceRepository: GeofenceRepository
     private lateinit var viewModel: SettingsViewModel
     private val testDispatcher = StandardTestDispatcher()
 
@@ -36,6 +39,7 @@ class SettingsViewModelTest {
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         settingsProvider = mockk(relaxed = true)
+        geofenceRepository = mockk(relaxed = true)
 
         // Setup default flows
         every { settingsProvider.commuteDays } returns flowOf(emptySet())
@@ -46,8 +50,9 @@ class SettingsViewModelTest {
         every { settingsProvider.bleScanInterval } returns flowOf(60000L)
         every { settingsProvider.workTimeWindow } returns flowOf(TimeWindow.DEFAULT_WORK_TIME)
         every { settingsProvider.weeklyTargetHours } returns flowOf(40f)
+        every { geofenceRepository.getAllZones() } returns flowOf(emptyList<GeofenceZone>())
 
-        viewModel = SettingsViewModel(settingsProvider)
+        viewModel = SettingsViewModel(settingsProvider, geofenceRepository)
     }
 
     @After

@@ -19,9 +19,15 @@ import com.example.worktimetracker.ui.viewmodel.EntriesViewModel
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.BeforeEach
@@ -46,6 +52,7 @@ class ManualTrackingEntriesListTest {
 
     @BeforeEach
     fun setUp() {
+        Dispatchers.setMain(UnconfinedTestDispatcher())
         trackingDao = mockk(relaxed = true)
         pauseDao = mockk(relaxed = true)
         repository = TrackingRepository(trackingDao, pauseDao)
@@ -61,10 +68,16 @@ class ManualTrackingEntriesListTest {
         )
     }
 
+    @AfterEach
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
+
     @Test
     fun `manual tracking entries appear in entries list after stop`() = runTest {
         val completedEntries = mutableListOf<TrackingEntry>()
         var activeEntry: TrackingEntry? = null
+        val entriesFlow = MutableStateFlow<List<TrackingEntryWithPauses>>(emptyList())
 
         // Mock: capture inserted entries
         coEvery { trackingDao.insert(any()) } answers {
@@ -72,12 +85,13 @@ class ManualTrackingEntriesListTest {
             Unit
         }
 
-        // Mock: capture updated entries
+        // Mock: capture updated entries and push to flow
         coEvery { trackingDao.update(any()) } answers {
             val updated = firstArg<TrackingEntry>()
             activeEntry = updated
             if (updated.endTime != null) {
                 completedEntries.add(updated)
+                entriesFlow.value = completedEntries.map { TrackingEntryWithPauses(it, emptyList()) }
             }
             Unit
         }
@@ -90,12 +104,8 @@ class ManualTrackingEntriesListTest {
             activeEntry?.takeIf { it.endTime == null }
         }
 
-        // Mock: getAllEntriesWithPauses returns only completed entries (endTime != null)
-        every { trackingDao.getAllEntriesWithPauses() } answers {
-            flowOf(completedEntries
-                .filter { it.endTime != null }
-                .map { TrackingEntryWithPauses(it, emptyList()) })
-        }
+        // Mock: getAllEntriesWithPauses returns the MutableStateFlow
+        every { trackingDao.getAllEntriesWithPauses() } returns entriesFlow
 
         // Create EntriesViewModel
         entriesViewModel = EntriesViewModel(repository)
@@ -134,16 +144,17 @@ class ManualTrackingEntriesListTest {
     @Test
     fun `multiple manual tracking sessions all appear in entries list`() = runTest {
         val allEntries = mutableListOf<TrackingEntry>()
+        val allEntriesFlow = MutableStateFlow<List<TrackingEntryWithPauses>>(emptyList())
 
-        coEvery { trackingDao.insert(any()) } answers {
-            val entry = firstArg<TrackingEntry>()
-            Unit
-        }
+        coEvery { trackingDao.insert(any()) } answers { Unit }
 
         coEvery { trackingDao.update(any()) } answers {
             val entry = firstArg<TrackingEntry>()
             if (entry.endTime != null) {
                 allEntries.add(entry)
+                allEntriesFlow.value = allEntries
+                    .filter { it.endTime != null }
+                    .map { TrackingEntryWithPauses(it, emptyList()) }
             }
             Unit
         }
@@ -155,18 +166,15 @@ class ManualTrackingEntriesListTest {
 
         coEvery { trackingDao.getActiveEntry() } returns null
 
-        every { trackingDao.getAllEntriesWithPauses() } answers {
-            flowOf(allEntries
-                .filter { it.endTime != null }
-                .map { TrackingEntryWithPauses(it, emptyList()) })
-        }
+        every { trackingDao.getAllEntriesWithPauses() } returns allEntriesFlow
 
         entriesViewModel = EntriesViewModel(repository)
 
         entriesViewModel.entries.test {
             assertEquals(0, awaitItem().size, "Initially empty")
 
-            // Create 3 manual tracking sessions
+            // Create 3 manual tracking sessions, consuming each intermediate emission
+            var entries: List<TrackingEntryWithPauses> = emptyList()
             for (i in 1..3) {
                 val entry = TrackingEntry(
                     id = "entry-$i",
@@ -178,10 +186,10 @@ class ManualTrackingEntriesListTest {
                     confirmed = false
                 )
                 repository.updateEntry(entry)
+                entries = awaitItem()
             }
 
             // Verify all 3 entries appear
-            val entries = awaitItem()
             assertEquals(3, entries.size, "All 3 manual entries should appear")
             entries.forEach {
                 assertEquals(TrackingType.MANUAL, it.entry.type)

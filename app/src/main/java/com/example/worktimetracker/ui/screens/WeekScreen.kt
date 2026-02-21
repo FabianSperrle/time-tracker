@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.worktimetracker.data.local.entity.TrackingType
 import com.example.worktimetracker.domain.model.DaySummary
+import com.example.worktimetracker.domain.model.MonthlyStats
 import com.example.worktimetracker.domain.model.WeekStats
 import com.example.worktimetracker.ui.viewmodel.WeekViewModel
 import java.time.Duration
@@ -53,6 +54,8 @@ fun WeekScreen(
     val summaries by viewModel.weekSummaries.collectAsState()
     val stats by viewModel.weekStats.collectAsState()
     val hasUnconfirmed by viewModel.hasUnconfirmedEntries.collectAsState()
+    val monthlyStats by viewModel.monthlyStats.collectAsState()
+    val allTimeSaldo by viewModel.allTimeSaldo.collectAsState()
 
     Column(
         modifier = Modifier
@@ -60,7 +63,6 @@ fun WeekScreen(
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        // Week Navigation Header
         WeekNavigationHeader(
             weekNumber = weekNumber,
             weekStart = weekStart,
@@ -70,12 +72,10 @@ fun WeekScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Week Statistics Card
         WeekStatsCard(stats = stats)
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Daily Summaries
         DailySummariesCard(
             summaries = summaries,
             onDayClick = onDayClick
@@ -83,7 +83,6 @@ fun WeekScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Additional Stats
         AdditionalStatsCard(
             averagePerDay = stats.averagePerDay,
             overtime = stats.overtime
@@ -91,7 +90,18 @@ fun WeekScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Export Button
+        MonthlyAndAllTimeCard(
+            monthlyStats = monthlyStats,
+            allTimeSaldo = allTimeSaldo
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (monthlyStats.typeBreakdown.isNotEmpty()) {
+            TypeBreakdownCard(monthlyStats = monthlyStats)
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
         Button(
             onClick = onExportClick,
             modifier = Modifier.fillMaxWidth()
@@ -99,7 +109,6 @@ fun WeekScreen(
             Text("CSV exportieren")
         }
 
-        // Unconfirmed Entries Warning
         if (hasUnconfirmed) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
@@ -161,7 +170,6 @@ private fun WeekStatsCard(stats: WeekStats) {
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // Total vs Target
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -179,7 +187,6 @@ private fun WeekStatsCard(stats: WeekStats) {
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Progress Bar
             LinearProgressIndicator(
                 progress = { (stats.percentage / 100.0).toFloat().coerceIn(0f, 1f) },
                 modifier = Modifier.fillMaxWidth(),
@@ -187,7 +194,6 @@ private fun WeekStatsCard(stats: WeekStats) {
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Percentage
             Text(
                 text = "${String.format("%.1f", stats.percentage)}%",
                 style = MaterialTheme.typography.bodyMedium,
@@ -237,12 +243,10 @@ private fun DayRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Date and Type
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
         ) {
-            // Day of week and date
             Column {
                 Text(
                     text = summary.date.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.GERMAN),
@@ -256,36 +260,28 @@ private fun DayRow(
                 )
             }
 
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
-            // Type icon
-            val typeIcon = when (summary.type) {
-                TrackingType.COMMUTE_OFFICE -> "🏢"
-                TrackingType.HOME_OFFICE -> "🏠"
-                TrackingType.MANUAL -> "✋"
-                null -> ""
+            summary.types.forEach { type ->
+                val icon = when (type) {
+                    TrackingType.COMMUTE_OFFICE -> "🏢"
+                    TrackingType.HOME_OFFICE -> "🏠"
+                    TrackingType.MANUAL -> "✋"
+                }
+                Text(
+                    text = icon,
+                    style = MaterialTheme.typography.titleMedium
+                )
             }
-            Text(
-                text = typeIcon,
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Type text
-            val typeText = when (summary.type) {
-                TrackingType.COMMUTE_OFFICE -> "Büro"
-                TrackingType.HOME_OFFICE -> "Home Office"
-                TrackingType.MANUAL -> "Manuell"
-                null -> "—"
+            if (summary.types.isEmpty()) {
+                Text(
+                    text = "—",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-            Text(
-                text = typeText,
-                style = MaterialTheme.typography.bodyMedium
-            )
         }
 
-        // Duration and warning
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (!summary.confirmed && summary.type != null) {
                 Text(
@@ -365,6 +361,129 @@ private fun AdditionalStatsCard(
             }
         }
     }
+}
+
+@Composable
+private fun MonthlyAndAllTimeCard(
+    monthlyStats: MonthlyStats,
+    allTimeSaldo: Duration
+) {
+    val monthFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.GERMAN)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Text(
+                text = monthlyStats.month.atDay(1).format(monthFormatter),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(text = "Monatssaldo:", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = formatSaldo(monthlyStats.saldo),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = saldoColor(monthlyStats.saldo)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(text = "Gesamtsaldo:", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = formatSaldo(allTimeSaldo),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = saldoColor(allTimeSaldo)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TypeBreakdownCard(monthlyStats: MonthlyStats) {
+    val monthFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.GERMAN)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Text(
+                text = "Arbeitstypen – ${monthlyStats.month.atDay(1).format(monthFormatter)}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            monthlyStats.typeBreakdown.forEach { typeHours ->
+                val icon = when (typeHours.type) {
+                    TrackingType.COMMUTE_OFFICE -> "🏢"
+                    TrackingType.HOME_OFFICE -> "🏠"
+                    TrackingType.MANUAL -> "✋"
+                }
+                val label = when (typeHours.type) {
+                    TrackingType.COMMUTE_OFFICE -> "Büro"
+                    TrackingType.HOME_OFFICE -> "Home Office"
+                    TrackingType.MANUAL -> "Manuell"
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "$icon $label",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "${formatDuration(typeHours.duration)}  ${typeHours.percentage.toInt()}%",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun saldoColor(saldo: Duration) = when {
+    saldo.isNegative -> MaterialTheme.colorScheme.error
+    saldo > Duration.ZERO -> MaterialTheme.colorScheme.primary
+    else -> MaterialTheme.colorScheme.onSurface
+}
+
+private fun formatSaldo(duration: Duration): String {
+    val abs = duration.abs()
+    val hours = abs.toHours()
+    val minutes = abs.toMinutes() % 60
+    val sign = if (duration.isNegative) "−" else "+"
+    return "$sign${hours}h ${minutes.toString().padStart(2, '0')}min"
 }
 
 private fun formatDuration(duration: Duration): String {

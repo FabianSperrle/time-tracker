@@ -1,6 +1,7 @@
 package com.example.worktimetracker.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,18 +75,24 @@ fun AppNavHost(
             val date = dateString?.let { LocalDate.parse(it) } ?: LocalDate.now()
             // For now, navigate to entries screen filtered by date
             // TODO: Implement dedicated DayViewScreen when needed
-            navController.navigate(Screen.Entries.route) {
-                popUpTo(Screen.Week.route)
+            LaunchedEffect(date) {
+                navController.navigate(Screen.Entries.route) {
+                    popUpTo(Screen.Week.route)
+                }
             }
         }
         composable(Screen.Map.route) {
-            MapScreen()
+            MapScreen(onNavigateBack = { navController.popBackStack() })
         }
         composable(Screen.Entries.route) {
             EntriesScreen()
         }
         composable(Screen.Settings.route) {
-            SettingsScreen()
+            SettingsScreen(
+                onNavigateToMap = {
+                    navController.navigate(Screen.Map.route)
+                }
+            )
         }
     }
 }

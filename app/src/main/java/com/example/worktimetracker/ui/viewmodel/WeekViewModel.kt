@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.worktimetracker.data.repository.TrackingRepository
 import com.example.worktimetracker.data.settings.SettingsProvider
 import com.example.worktimetracker.domain.model.DaySummary
+import com.example.worktimetracker.domain.model.MonthlyStats
 import com.example.worktimetracker.domain.model.WeekStats
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,7 +16,10 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.time.DayOfWeek
+import java.time.Duration
 import java.time.LocalDate
+import java.time.YearMonth
+import java.time.temporal.ChronoUnit
 import java.time.temporal.WeekFields
 import java.util.Locale
 import javax.inject.Inject
@@ -49,21 +53,20 @@ class WeekViewModel @Inject constructor(
     )
 
     /**
-     * Daily summaries for the selected week (Monday to Friday).
+     * Daily summaries for the selected week (Mon–Sun). Empty Sat/Sun are omitted.
      */
     val weekSummaries: StateFlow<List<DaySummary>> = _selectedWeekStart
         .flatMapLatest { weekStart ->
-            val weekEnd = weekStart.plusDays(4) // Friday
+            val weekEnd = weekStart.plusDays(6) // Sunday
             repository.getEntriesInRange(weekStart, weekEnd)
                 .map { entries ->
-                    // Group entries by date
-                    val entriesByDate = entries.groupBy { it.entry.date }
-
-                    // Generate summaries for Monday through Friday
-                    (0..4).map { dayOffset ->
-                        val date = weekStart.plusDays(dayOffset.toLong())
-                        val entriesForDay = entriesByDate[date] ?: emptyList()
-                        DaySummary.from(date, entriesForDay)
+                    val byDate = entries.groupBy { it.entry.date }
+                    (0..6).mapNotNull { offset ->
+                        val date = weekStart.plusDays(offset.toLong())
+                        val dayEntries = byDate[date] ?: emptyList()
+                        // Hide empty weekend days; always show Mon–Fri
+                        if (offset >= 5 && dayEntries.isEmpty()) null
+                        else DaySummary.from(date, dayEntries)
                     }
                 }
         }
@@ -101,6 +104,47 @@ class WeekViewModel @Inject constructor(
         )
 
     /**
+     * Monthly statistics for the month containing the selected week.
+     */
+    val monthlyStats: StateFlow<MonthlyStats> = _selectedWeekStart
+        .flatMapLatest { weekStart ->
+            val ym = YearMonth.from(weekStart)
+            combine(
+                repository.getEntriesInRange(ym.atDay(1), ym.atEndOfMonth()),
+                settingsProvider.weeklyTargetHours
+            ) { entries, targetHours ->
+                MonthlyStats.from(entries, ym, targetHours)
+            }
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = MonthlyStats.EMPTY
+        )
+
+    /**
+     * All-time saldo (actual hours worked minus expected hours since first entry).
+     */
+    val allTimeSaldo: StateFlow<Duration> = combine(
+        repository.getAllEntriesWithPauses(),
+        settingsProvider.weeklyTargetHours
+    ) { entries, targetHours ->
+        if (entries.isEmpty()) {
+            Duration.ZERO
+        } else {
+            val firstDate = entries.minOf { it.entry.date }
+            val workingDays = countWorkingDays(firstDate, LocalDate.now())
+            val target = Duration.ofMinutes((workingDays * targetHours / 5.0 * 60).toLong())
+            val actual = Duration.ofMinutes(entries.sumOf { it.netDuration().toMinutes() })
+            actual.minus(target)
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = Duration.ZERO
+    )
+
+    /**
      * Navigate to the previous week.
      */
     fun previousWeek() {
@@ -126,5 +170,18 @@ class WeekViewModel @Inject constructor(
      */
     private fun currentWeekStart(): LocalDate {
         return LocalDate.now().with(DayOfWeek.MONDAY)
+    }
+
+    /**
+     * Counts Mon–Fri working days between start and end (inclusive) in O(1).
+     */
+    private fun countWorkingDays(start: LocalDate, end: LocalDate): Long {
+        val total = ChronoUnit.DAYS.between(start, end) + 1
+        val fullWeeks = total / 7
+        val remainder = (total % 7).toInt()
+        var count = fullWeeks * 5
+        val startDow = start.dayOfWeek.value // 1=Mon … 7=Sun
+        repeat(remainder) { i -> if ((startDow - 1 + i) % 7 < 5) count++ }
+        return count
     }
 }

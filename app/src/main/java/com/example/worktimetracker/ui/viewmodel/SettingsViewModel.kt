@@ -2,12 +2,14 @@ package com.example.worktimetracker.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.worktimetracker.data.repository.GeofenceRepository
 import com.example.worktimetracker.data.settings.SettingsProvider
 import com.example.worktimetracker.domain.model.TimeWindow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -19,7 +21,8 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val settingsProvider: SettingsProvider
+    private val settingsProvider: SettingsProvider,
+    private val geofenceRepository: GeofenceRepository
 ) : ViewModel() {
 
     private val _dialogState = MutableStateFlow(DialogState())
@@ -44,8 +47,9 @@ class SettingsViewModel @Inject constructor(
         ) { beaconTimeout, bleScanInterval, workTimeWindow, weeklyTargetHours ->
             PartialSettings2(beaconTimeout, bleScanInterval, workTimeWindow, weeklyTargetHours)
         },
-        _dialogState
-    ) { partial1, partial2, dialogState ->
+        _dialogState,
+        geofenceRepository.getAllZones().map { it.size }
+    ) { partial1, partial2, dialogState, zoneCount ->
         SettingsUiState(
             commuteDays = partial1.commuteDays,
             outboundWindow = partial1.outboundWindow,
@@ -55,8 +59,16 @@ class SettingsViewModel @Inject constructor(
             bleScanInterval = partial2.bleScanInterval,
             workTimeWindow = partial2.workTimeWindow,
             weeklyTargetHours = partial2.weeklyTargetHours,
+            zoneCount = zoneCount,
             showResetConfirmation = dialogState.showResetConfirmation,
-            showCommuteDaysDialog = dialogState.showCommuteDaysDialog
+            showCommuteDaysDialog = dialogState.showCommuteDaysDialog,
+            showOutboundWindowDialog = dialogState.showOutboundWindowDialog,
+            showReturnWindowDialog = dialogState.showReturnWindowDialog,
+            showWorkTimeWindowDialog = dialogState.showWorkTimeWindowDialog,
+            showBeaconTimeoutDialog = dialogState.showBeaconTimeoutDialog,
+            showBleScanIntervalDialog = dialogState.showBleScanIntervalDialog,
+            showWeeklyTargetHoursDialog = dialogState.showWeeklyTargetHoursDialog,
+            showBeaconUuidDialog = dialogState.showBeaconUuidDialog
         )
     }.stateIn(
         scope = viewModelScope,
@@ -185,6 +197,104 @@ class SettingsViewModel @Inject constructor(
     fun dismissCommuteDaysDialog() {
         _dialogState.update { it.copy(showCommuteDaysDialog = false) }
     }
+
+    /**
+     * Shows the outbound time window dialog.
+     */
+    fun showOutboundWindowDialog() {
+        _dialogState.update { it.copy(showOutboundWindowDialog = true) }
+    }
+
+    /**
+     * Dismisses the outbound time window dialog.
+     */
+    fun dismissOutboundWindowDialog() {
+        _dialogState.update { it.copy(showOutboundWindowDialog = false) }
+    }
+
+    /**
+     * Shows the return time window dialog.
+     */
+    fun showReturnWindowDialog() {
+        _dialogState.update { it.copy(showReturnWindowDialog = true) }
+    }
+
+    /**
+     * Dismisses the return time window dialog.
+     */
+    fun dismissReturnWindowDialog() {
+        _dialogState.update { it.copy(showReturnWindowDialog = false) }
+    }
+
+    /**
+     * Shows the work time window dialog.
+     */
+    fun showWorkTimeWindowDialog() {
+        _dialogState.update { it.copy(showWorkTimeWindowDialog = true) }
+    }
+
+    /**
+     * Dismisses the work time window dialog.
+     */
+    fun dismissWorkTimeWindowDialog() {
+        _dialogState.update { it.copy(showWorkTimeWindowDialog = false) }
+    }
+
+    /**
+     * Shows the beacon timeout dialog.
+     */
+    fun showBeaconTimeoutDialog() {
+        _dialogState.update { it.copy(showBeaconTimeoutDialog = true) }
+    }
+
+    /**
+     * Dismisses the beacon timeout dialog.
+     */
+    fun dismissBeaconTimeoutDialog() {
+        _dialogState.update { it.copy(showBeaconTimeoutDialog = false) }
+    }
+
+    /**
+     * Shows the BLE scan interval dialog.
+     */
+    fun showBleScanIntervalDialog() {
+        _dialogState.update { it.copy(showBleScanIntervalDialog = true) }
+    }
+
+    /**
+     * Dismisses the BLE scan interval dialog.
+     */
+    fun dismissBleScanIntervalDialog() {
+        _dialogState.update { it.copy(showBleScanIntervalDialog = false) }
+    }
+
+    /**
+     * Shows the weekly target hours dialog.
+     */
+    fun showWeeklyTargetHoursDialog() {
+        _dialogState.update { it.copy(showWeeklyTargetHoursDialog = true) }
+    }
+
+    /**
+     * Dismisses the weekly target hours dialog.
+     */
+    fun dismissWeeklyTargetHoursDialog() {
+        _dialogState.update { it.copy(showWeeklyTargetHoursDialog = false) }
+    }
+
+    /**
+     * Shows the beacon UUID dialog.
+     */
+    fun showBeaconUuidDialog() {
+        _dialogState.update { it.copy(showBeaconUuidDialog = true) }
+    }
+
+    /**
+     * Dismisses the beacon UUID dialog.
+     */
+    fun dismissBeaconUuidDialog() {
+        _dialogState.update { it.copy(showBeaconUuidDialog = false) }
+    }
 }
 
 /**
@@ -199,8 +309,16 @@ data class SettingsUiState(
     val bleScanInterval: Long = 60000L,
     val workTimeWindow: TimeWindow = TimeWindow.DEFAULT_WORK_TIME,
     val weeklyTargetHours: Float = 40f,
+    val zoneCount: Int = 0,
     val showResetConfirmation: Boolean = false,
-    val showCommuteDaysDialog: Boolean = false
+    val showCommuteDaysDialog: Boolean = false,
+    val showOutboundWindowDialog: Boolean = false,
+    val showReturnWindowDialog: Boolean = false,
+    val showWorkTimeWindowDialog: Boolean = false,
+    val showBeaconTimeoutDialog: Boolean = false,
+    val showBleScanIntervalDialog: Boolean = false,
+    val showWeeklyTargetHoursDialog: Boolean = false,
+    val showBeaconUuidDialog: Boolean = false
 )
 
 /**
@@ -208,7 +326,14 @@ data class SettingsUiState(
  */
 private data class DialogState(
     val showResetConfirmation: Boolean = false,
-    val showCommuteDaysDialog: Boolean = false
+    val showCommuteDaysDialog: Boolean = false,
+    val showOutboundWindowDialog: Boolean = false,
+    val showReturnWindowDialog: Boolean = false,
+    val showWorkTimeWindowDialog: Boolean = false,
+    val showBeaconTimeoutDialog: Boolean = false,
+    val showBleScanIntervalDialog: Boolean = false,
+    val showWeeklyTargetHoursDialog: Boolean = false,
+    val showBeaconUuidDialog: Boolean = false
 )
 
 /**

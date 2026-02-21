@@ -78,7 +78,17 @@ class EntryEditorViewModel @AssistedInject constructor(
         _notes,
         _pauses,
         _confirmed
-    ) { date, type, startTime, endTime, notes, pauses, confirmed ->
+    ) { values: Array<Any?> ->
+        val date = values[0] as LocalDate
+        val type = values[1] as TrackingType
+        @Suppress("UNCHECKED_CAST")
+        val startTime = values[2] as LocalTime?
+        @Suppress("UNCHECKED_CAST")
+        val endTime = values[3] as LocalTime?
+        val notes = values[4] as String
+        @Suppress("UNCHECKED_CAST")
+        val pauses = values[5] as List<PauseEdit>
+        val confirmed = values[6] as Boolean
         val netDuration = calculateNetDuration(startTime, endTime, pauses)
         EntryEditorState(
             date = date,
@@ -253,11 +263,20 @@ class EntryEditorViewModel @AssistedInject constructor(
     }
 
     suspend fun saveEntry(): Boolean {
-        if (validationErrors.value.isNotEmpty()) {
+        val state = EntryEditorState(
+            date = _date.value,
+            type = _type.value,
+            startTime = _startTime.value,
+            endTime = _endTime.value,
+            notes = _notes.value,
+            pauses = _pauses.value,
+            confirmed = _confirmed.value,
+            netDuration = calculateNetDuration(_startTime.value, _endTime.value, _pauses.value)
+        )
+        if (buildValidationMessages(state).isNotEmpty()) {
             return false
         }
 
-        val state = editorState.value
         val startDateTime = LocalDateTime.of(state.date, state.startTime!!)
         val endDateTime = state.endTime?.let { LocalDateTime.of(state.date, it) }
 

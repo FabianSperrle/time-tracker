@@ -318,7 +318,7 @@ class MapViewModelTest {
         viewModel = MapViewModel(repository, geocodingService)
 
         // When
-        viewModel.deleteZone(zone)
+        viewModel.deleteZone(zone) { /* snackbar callback not needed in unit test */ }
         testDispatcher.scheduler.advanceUntilIdle()
 
         // Then
@@ -381,13 +381,13 @@ class MapViewModelTest {
         coEvery { geocodingService.searchAddress(any()) } returns Result.success(emptyList())
         viewModel = MapViewModel(repository, geocodingService)
 
-        // When
-        viewModel.performSearch("München")
-
-        // Then - should be loading immediately
+        // Then - subscribe first, then trigger search inside the block
         viewModel.uiState.test {
+            awaitItem() // initial state (isSearching = false)
+            viewModel.performSearch("München")
             val state = awaitItem()
             assertTrue(state.isSearching)
+            cancelAndIgnoreRemainingEvents()
         }
     }
 

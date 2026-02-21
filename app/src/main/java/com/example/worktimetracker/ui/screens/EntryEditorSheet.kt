@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -184,9 +185,10 @@ fun EntryEditorSheet(
             }
 
             item {
-                if (editorState.netDuration != null) {
-                    val hours = editorState.netDuration.toHours()
-                    val minutes = editorState.netDuration.toMinutes() % 60
+                val netDuration = editorState.netDuration
+                if (netDuration != null) {
+                    val hours = netDuration.toHours()
+                    val minutes = netDuration.toMinutes() % 60
                     Text(
                         text = "Netto: ${hours}h ${minutes}min",
                         style = MaterialTheme.typography.titleMedium,
@@ -226,7 +228,7 @@ fun EntryEditorSheet(
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        containerColor = MaterialTheme.colorScheme.errorContainer
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             validationErrors.forEach { error ->

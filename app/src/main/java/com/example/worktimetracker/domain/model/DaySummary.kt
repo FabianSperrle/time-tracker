@@ -16,6 +16,7 @@ import java.time.LocalDate
 data class DaySummary(
     val date: LocalDate,
     val type: TrackingType?,
+    val types: List<TrackingType> = emptyList(),
     val netDuration: Duration,
     val confirmed: Boolean
 ) {
@@ -32,6 +33,7 @@ data class DaySummary(
                 return DaySummary(
                     date = date,
                     type = null,
+                    types = emptyList(),
                     netDuration = Duration.ZERO,
                     confirmed = true
                 )
@@ -39,6 +41,9 @@ data class DaySummary(
 
             // Use the type of the first entry
             val type = entries.firstOrNull()?.entry?.type
+
+            // Collect all distinct types in entry order
+            val types = entries.map { it.entry.type }.distinct()
 
             // Sum net durations
             val totalMinutes = entries.sumOf { it.netDuration().toMinutes() }
@@ -50,6 +55,7 @@ data class DaySummary(
             return DaySummary(
                 date = date,
                 type = type,
+                types = types,
                 netDuration = netDuration,
                 confirmed = confirmed
             )

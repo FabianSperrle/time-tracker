@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -35,9 +37,25 @@ import com.google.maps.android.compose.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapScreen(
+    onNavigateBack: () -> Unit = {},
     viewModel: MapViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    fun onDeleteZone(zone: com.example.worktimetracker.data.local.entity.GeofenceZone) {
+        viewModel.deleteZone(zone) { deleted ->
+            scope.launch {
+                val result = snackbarHostState.showSnackbar(
+                    message = "Zone \"${deleted.name}\" gelöscht",
+                    actionLabel = "Rückgängig",
+                    duration = SnackbarDuration.Short
+                )
+                if (result == SnackbarResult.ActionPerformed) viewModel.undoDeleteZone(deleted)
+            }
+        }
+    }
 
     var cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(
@@ -58,6 +76,7 @@ fun MapScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             SearchBar(
                 query = uiState.searchQuery,
@@ -67,7 +86,8 @@ fun MapScreen(
                 isSearching = uiState.isSearching,
                 searchError = uiState.searchError,
                 onResultClick = { viewModel.selectSearchResult(it) },
-                onClearSearch = { viewModel.clearSearch() }
+                onClearSearch = { viewModel.clearSearch() },
+                onNavigateBack = onNavigateBack
             )
         },
         floatingActionButton = {
@@ -139,19 +159,31 @@ fun MapScreen(
                 }
             }
 
-            // Zone list at bottom
+            // Zone list at bottom (hidden while editing)
             if (!uiState.isEditingZone) {
                 ZoneList(
                     zones = uiState.zones,
+                    onFocusZone = { viewModel.focusZone(it) },
                     onEditZone = { viewModel.startEditingZone(it) },
-                    onDeleteZone = { viewModel.deleteZone(it) },
+                    onDeleteZone = { onDeleteZone(it) },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 80.dp)
+                )
+            }
+
+            // Banner shown while waiting for the user to tap the map
+            if (uiState.isEditingZone && uiState.temporaryPosition == null) {
+                LocationPickerBanner(
+                    onCancel = { viewModel.cancelEditing() },
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }
         }
 
-        // Edit Zone Bottom Sheet
-        if (uiState.isEditingZone) {
+        // Edit Zone Bottom Sheet – only shown once a position is known
+        if (uiState.isEditingZone &&
+            (uiState.selectedZone != null || uiState.temporaryPosition != null)) {
             ZoneEditorBottomSheet(
                 zone = uiState.selectedZone,
                 name = uiState.temporaryName,
@@ -166,7 +198,7 @@ fun MapScreen(
                 onSave = { viewModel.saveZone() },
                 onCancel = { viewModel.cancelEditing() },
                 onDelete = {
-                    uiState.selectedZone?.let { viewModel.deleteZone(it) }
+                    uiState.selectedZone?.let { onDeleteZone(it) }
                     viewModel.cancelEditing()
                 }
             )
@@ -184,10 +216,19 @@ private fun SearchBar(
     isSearching: Boolean,
     searchError: String?,
     onResultClick: (com.example.worktimetracker.domain.SearchResult) -> Unit,
-    onClearSearch: () -> Unit
+    onClearSearch: () -> Unit,
+    onNavigateBack: () -> Unit
 ) {
     Column {
         TopAppBar(
+            navigationIcon = {
+                IconButton(onClick = onNavigateBack) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Zurück"
+                    )
+                }
+            },
             title = {
                 OutlinedTextField(
                     value = query,
@@ -295,8 +336,38 @@ private fun SearchResultItem(
 }
 
 @Composable
+private fun LocationPickerBanner(
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Auf der Karte antippen, um die Zone zu platzieren",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onCancel) {
+                Text("Abbrechen")
+            }
+        }
+    }
+}
+
+@Composable
 private fun ZoneList(
     zones: List<GeofenceZone>,
+    onFocusZone: (GeofenceZone) -> Unit,
     onEditZone: (GeofenceZone) -> Unit,
     onDeleteZone: (GeofenceZone) -> Unit,
     modifier: Modifier = Modifier
@@ -316,6 +387,7 @@ private fun ZoneList(
             items(zones) { zone ->
                 ZoneListItem(
                     zone = zone,
+                    onFocus = { onFocusZone(zone) },
                     onEdit = { onEditZone(zone) },
                     onDelete = { onDeleteZone(zone) }
                 )
@@ -327,6 +399,7 @@ private fun ZoneList(
 @Composable
 private fun ZoneListItem(
     zone: GeofenceZone,
+    onFocus: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -334,7 +407,7 @@ private fun ZoneListItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clickable(onClick = onEdit),
+            .clickable(onClick = onFocus),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(

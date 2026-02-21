@@ -31,9 +31,9 @@ class ScreenTest {
     @Test
     fun `all navigation items are present`() {
         assertEquals(4, navigationItems.size)
-        assertEquals(Screen.Dashboard, navigationItems[0].screen)
-        assertEquals(Screen.Map, navigationItems[1].screen)
-        assertEquals(Screen.Entries, navigationItems[2].screen)
-        assertEquals(Screen.Settings, navigationItems[3].screen)
+        assertEquals(Screen.Week,      navigationItems[0].screen)
+        assertEquals(Screen.Dashboard, navigationItems[1].screen)
+        assertEquals(Screen.Entries,   navigationItems[2].screen)
+        assertEquals(Screen.Settings,  navigationItems[3].screen)
     }
 }

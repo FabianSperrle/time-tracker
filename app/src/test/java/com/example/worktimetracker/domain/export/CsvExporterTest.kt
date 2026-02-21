@@ -109,7 +109,7 @@ class CsvExporterTest {
         val lines = file.readLines(Charsets.UTF_8)
         assertEquals(2, lines.size) // Header + 1 entry
         val row = lines[1]
-        assertEquals("2026-02-10;Montag;Home Office;08:15;16:37;8.37;0.50;7.87;", row)
+        assertEquals("2026-02-10;Dienstag;Home Office;08:15;16:37;8.37;0.50;7.87;", row)
     }
 
     @Test
@@ -143,7 +143,7 @@ class CsvExporterTest {
         // Assert
         val lines = file.readLines(Charsets.UTF_8)
         val row = lines[1]
-        assertEquals("2026-02-11;Dienstag;Büro (Pendel);07:45;16:32;8.78;0.50;8.28;Teammeeting", row)
+        assertEquals("2026-02-11;Mittwoch;Büro (Pendel);07:45;16:32;8.78;0.50;8.28;Teammeeting", row)
     }
 
     @Test
@@ -171,7 +171,7 @@ class CsvExporterTest {
         // Assert
         val lines = file.readLines(Charsets.UTF_8)
         val row = lines[1]
-        assertEquals("2026-02-12;Mittwoch;Manuell;09:00;17:00;8.00;0.00;8.00;", row)
+        assertEquals("2026-02-12;Donnerstag;Manuell;09:00;17:00;8.00;0.00;8.00;", row)
     }
 
     @Test
@@ -400,13 +400,9 @@ class CsvExporterTest {
 
         // Assert
         val content = file.readText(Charsets.UTF_8)
-        val lines = content.split("\n")
-        // Should still be 2 lines: header + 1 entry (newline in notes should be escaped)
-        assertEquals(2, lines.size)
-        val row = lines[1]
-        val columns = parseCsvRow(row)
-        assertEquals(9, columns.size)
-        assertEquals("Zeile 1\nZeile 2", columns[8])
+        val records = parseCsvContent(content.removePrefix("\uFEFF"))
+        assertEquals(2, records.size) // header + 1 data record
+        assertEquals("Zeile 1\nZeile 2", records[1][8])
     }
 
     /**
@@ -456,6 +452,55 @@ class CsvExporterTest {
         fields.add(currentField.toString())
 
         return fields
+    }
+
+    /**
+     * RFC 4180 compliant CSV parser for the full file content, handling quoted fields
+     * that may contain embedded semicolons, quotes, and newlines.
+     */
+    private fun parseCsvContent(content: String): List<List<String>> {
+        val records = mutableListOf<List<String>>()
+        val currentRecord = mutableListOf<String>()
+        val currentField = StringBuilder()
+        var inQuotes = false
+        var i = 0
+
+        while (i < content.length) {
+            val char = content[i]
+            when {
+                char == '"' -> {
+                    if (inQuotes) {
+                        if (i + 1 < content.length && content[i + 1] == '"') {
+                            currentField.append('"')
+                            i++
+                        } else {
+                            inQuotes = false
+                        }
+                    } else {
+                        inQuotes = true
+                    }
+                }
+                char == ';' && !inQuotes -> {
+                    currentRecord.add(currentField.toString())
+                    currentField.clear()
+                }
+                char == '\n' && !inQuotes -> {
+                    currentRecord.add(currentField.toString())
+                    currentField.clear()
+                    records.add(currentRecord.toList())
+                    currentRecord.clear()
+                }
+                else -> currentField.append(char)
+            }
+            i++
+        }
+
+        if (currentRecord.isNotEmpty() || currentField.isNotEmpty()) {
+            currentRecord.add(currentField.toString())
+            records.add(currentRecord.toList())
+        }
+
+        return records
     }
 
     @Test

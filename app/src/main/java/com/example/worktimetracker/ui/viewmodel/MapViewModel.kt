@@ -9,9 +9,12 @@ import com.example.worktimetracker.domain.GeocodingService
 import com.example.worktimetracker.domain.SearchResult
 import com.google.android.gms.maps.model.LatLng
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -41,15 +44,22 @@ class MapViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
 
+    private val _pendingDeleteId = MutableStateFlow<String?>(null)
+    private var _pendingDeleteJob: Job? = null
+
     init {
         loadZones()
     }
 
     private fun loadZones() {
         viewModelScope.launch {
-            geofenceRepository.getAllZones().collect { zones ->
-                _uiState.update { it.copy(zones = zones) }
-            }
+            geofenceRepository.getAllZones()
+                .combine(_pendingDeleteId) { zones, pendingId ->
+                    if (pendingId != null) zones.filter { it.id != pendingId } else zones
+                }
+                .collect { zones ->
+                    _uiState.update { it.copy(zones = zones) }
+                }
         }
     }
 
@@ -148,10 +158,23 @@ class MapViewModel @Inject constructor(
         }
     }
 
-    fun deleteZone(zone: GeofenceZone) {
-        viewModelScope.launch {
+    fun focusZone(zone: GeofenceZone) {
+        _uiState.update { it.copy(cameraTarget = LatLng(zone.latitude, zone.longitude)) }
+    }
+
+    fun deleteZone(zone: GeofenceZone, onShowSnackbar: (GeofenceZone) -> Unit) {
+        _pendingDeleteId.value = zone.id
+        onShowSnackbar(zone)
+        _pendingDeleteJob = viewModelScope.launch {
+            delay(5_000)
             geofenceRepository.deleteZone(zone)
+            _pendingDeleteId.value = null
         }
+    }
+
+    fun undoDeleteZone(zone: GeofenceZone) {
+        _pendingDeleteJob?.cancel()
+        _pendingDeleteId.value = null
     }
 
     fun updateSearchQuery(query: String) {
