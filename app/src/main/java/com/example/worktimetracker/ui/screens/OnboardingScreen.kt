@@ -95,7 +95,8 @@ private fun WelcomeStep(
     OnboardingStepLayout(
         title = "Welcome to Work Time Tracker",
         description = "This app automatically tracks your work time using location and Bluetooth beacons.\n\n" +
-                "To function properly, the app needs several permissions. Let's set them up together.",
+                "To function properly, the app needs several permissions. Let's set them up together.\n\n" +
+                "If you previously used this app on another device, your data will be restored automatically from Google Backup.",
         onNext = onNext,
         onBack = null,
         nextButtonText = "Get Started",
