@@ -100,16 +100,16 @@ class CommuteStateMachineIntegrationTest {
             assertEquals(CommutePhase.IN_OFFICE, awaitItem())
         }
 
-        // Step 3: Exit office -> RETURN
+        // Step 3: Exit office in return window -> RETURN phase + auto-pause
         stateMachine.processEvent(TrackingEvent.GeofenceExited(ZoneType.OFFICE, officeExitTime))
         commutePhaseTracker.currentPhase.test {
             assertEquals(CommutePhase.RETURN, awaitItem())
         }
 
-        // Step 4: Enter home station -> COMPLETED, tracking stops
+        // Step 4: Enter home station while paused -> COMPLETED, tracking stops
         stateMachine.state.test {
             val currentState = awaitItem()
-            assertTrue(currentState is TrackingState.Tracking)
+            assertTrue(currentState is TrackingState.Paused) // paused after office exit
 
             stateMachine.processEvent(TrackingEvent.GeofenceEntered(ZoneType.HOME_STATION, returnTime))
             val idleState = awaitItem()
@@ -308,6 +308,108 @@ class CommuteStateMachineIntegrationTest {
 
         // Phase should now be OUTBOUND (new commute started, old COMPLETED overwritten)
         assertEquals(CommutePhase.OUTBOUND, commutePhaseTracker.currentPhase.value)
+    }
+
+    // ========== OFFICE_STATION Auto-Pause/Resume Integration Tests ==========
+
+    @Test
+    fun `full day happy path with OFFICE_STATION pause and resume`() = runTest {
+        // Full flow: HOME_STATION → OFFICE_STATION (pause) → OFFICE (resume) →
+        //            EXIT OFFICE (pause) → EXIT OFFICE_STATION (resume) → HOME_STATION (stop)
+        val outboundTime = LocalDateTime.of(2026, 2, 9, 7, 45)
+        val officeStationEnterTime = LocalDateTime.of(2026, 2, 9, 8, 10)
+        val officeEnterTime = LocalDateTime.of(2026, 2, 9, 8, 25)
+        val officeExitTime = LocalDateTime.of(2026, 2, 9, 17, 0)
+        val officeStationExitTime = LocalDateTime.of(2026, 2, 9, 17, 18)
+        val returnTime = LocalDateTime.of(2026, 2, 9, 17, 30)
+
+        val trackingEntry = TrackingEntry(
+            id = "entry-1",
+            date = outboundTime.toLocalDate(),
+            type = TrackingType.COMMUTE_OFFICE,
+            startTime = outboundTime,
+            endTime = null,
+            autoDetected = true
+        )
+        coEvery { repository.startTracking(TrackingType.COMMUTE_OFFICE, true) } returns trackingEntry
+        coEvery { repository.startPause("entry-1") } returns "pause-1"
+        coEvery { repository.getActiveEntry() } returns trackingEntry
+
+        // Step 1: Start commute
+        stateMachine.processEvent(TrackingEvent.GeofenceEntered(ZoneType.HOME_STATION, outboundTime))
+        assertTrue(stateMachine.state.value is TrackingState.Tracking)
+        assertEquals(CommutePhase.OUTBOUND, commutePhaseTracker.currentPhase.value)
+
+        // Step 2: Enter OFFICE_STATION → pause (morning walk starts)
+        stateMachine.processEvent(TrackingEvent.GeofenceEntered(ZoneType.OFFICE_STATION, officeStationEnterTime))
+        assertTrue(stateMachine.state.value is TrackingState.Paused)
+
+        // Step 3: Enter OFFICE → resume (arrived at work)
+        stateMachine.processEvent(TrackingEvent.GeofenceEntered(ZoneType.OFFICE, officeEnterTime))
+        assertTrue(stateMachine.state.value is TrackingState.Tracking)
+        assertEquals(CommutePhase.IN_OFFICE, commutePhaseTracker.currentPhase.value)
+
+        // Step 4: Exit OFFICE in return window → pause (evening walk starts)
+        stateMachine.processEvent(TrackingEvent.GeofenceExited(ZoneType.OFFICE, officeExitTime))
+        assertTrue(stateMachine.state.value is TrackingState.Paused)
+        assertEquals(CommutePhase.RETURN, commutePhaseTracker.currentPhase.value)
+
+        // Step 5: Exit OFFICE_STATION → resume (on the train home)
+        stateMachine.processEvent(TrackingEvent.GeofenceExited(ZoneType.OFFICE_STATION, officeStationExitTime))
+        assertTrue(stateMachine.state.value is TrackingState.Tracking)
+
+        // Step 6: Enter HOME_STATION → stop tracking
+        stateMachine.processEvent(TrackingEvent.GeofenceEntered(ZoneType.HOME_STATION, returnTime))
+        assertTrue(stateMachine.state.value is TrackingState.Idle)
+        assertEquals(CommutePhase.COMPLETED, commutePhaseTracker.currentPhase.value)
+
+        // Verify: startPause ×2, stopPause ×2, stopTracking ×1 with correct timestamp
+        coVerify(exactly = 2) { repository.startPause("entry-1") }
+        coVerify(exactly = 2) { repository.stopPause("entry-1") }
+        coVerify(exactly = 1) { repository.stopTracking("entry-1", endTime = returnTime) }
+    }
+
+    @Test
+    fun `EXIT OFFICE_STATION never fires - stop tracking from PAUSED via HOME_STATION`() = runTest {
+        // Edge case: EXIT OFFICE_STATION is never detected, user arrives at HOME_STATION
+        // while still in PAUSED state (after EXIT OFFICE). Tracking should stop correctly.
+        val outboundTime = LocalDateTime.of(2026, 2, 9, 7, 45)
+        val officeEnterTime = LocalDateTime.of(2026, 2, 9, 8, 30)
+        val officeExitTime = LocalDateTime.of(2026, 2, 9, 17, 0) // return window → auto-pause
+        val returnTime = LocalDateTime.of(2026, 2, 9, 17, 35) // in return window
+
+        val trackingEntry = TrackingEntry(
+            id = "entry-1",
+            date = outboundTime.toLocalDate(),
+            type = TrackingType.COMMUTE_OFFICE,
+            startTime = outboundTime,
+            endTime = null,
+            autoDetected = true
+        )
+        coEvery { repository.startTracking(TrackingType.COMMUTE_OFFICE, true) } returns trackingEntry
+        coEvery { repository.startPause("entry-1") } returns "pause-1"
+
+        // Start commute → tracking
+        stateMachine.processEvent(TrackingEvent.GeofenceEntered(ZoneType.HOME_STATION, outboundTime))
+        assertTrue(stateMachine.state.value is TrackingState.Tracking)
+
+        // Enter office (no OFFICE_STATION pause in this scenario)
+        stateMachine.processEvent(TrackingEvent.GeofenceEntered(ZoneType.OFFICE, officeEnterTime))
+        assertEquals(CommutePhase.IN_OFFICE, commutePhaseTracker.currentPhase.value)
+
+        // Exit office in return window → auto-pause
+        stateMachine.processEvent(TrackingEvent.GeofenceExited(ZoneType.OFFICE, officeExitTime))
+        assertTrue(stateMachine.state.value is TrackingState.Paused)
+        assertEquals(CommutePhase.RETURN, commutePhaseTracker.currentPhase.value)
+
+        // EXIT OFFICE_STATION never fires; directly enter HOME_STATION while PAUSED
+        stateMachine.processEvent(TrackingEvent.GeofenceEntered(ZoneType.HOME_STATION, returnTime))
+        assertTrue(stateMachine.state.value is TrackingState.Idle)
+        assertEquals(CommutePhase.COMPLETED, commutePhaseTracker.currentPhase.value)
+
+        coVerify(exactly = 1) { repository.startPause("entry-1") }
+        coVerify(exactly = 1) { repository.stopPause("entry-1") }
+        coVerify(exactly = 1) { repository.stopTracking("entry-1", endTime = returnTime) }
     }
 
     @Test

@@ -113,6 +113,8 @@ class TrackingStateMachine @Inject constructor(
         event: TrackingEvent
     ): TrackingState? {
         return when (event) {
+            is TrackingEvent.GeofenceEntered -> handleGeofenceEnteredWhilePaused(currentState, event)
+            is TrackingEvent.GeofenceExited -> handleGeofenceExitedWhilePaused(currentState, event)
             is TrackingEvent.PauseEnd -> {
                 handlePauseEnd(currentState)
             }
@@ -167,10 +169,10 @@ class TrackingStateMachine @Inject constructor(
                 }
                 null // No tracking state change
             }
+            ZoneType.OFFICE_STATION -> handleOfficeStationEnteredWhileTracking(currentState, event)
             ZoneType.HOME_STATION -> {
                 handleReturnToHomeStation(currentState, event)
             }
-            else -> null
         }
     }
 
@@ -208,16 +210,23 @@ class TrackingStateMachine @Inject constructor(
         return TrackingState.Idle
     }
 
-    private fun handleGeofenceExitedWhileTracking(
+    private suspend fun handleGeofenceExitedWhileTracking(
         currentState: TrackingState.Tracking,
         event: TrackingEvent.GeofenceExited
     ): TrackingState? {
-        if (event.zoneType == ZoneType.OFFICE && currentState.type == TrackingType.COMMUTE_OFFICE) {
-            // Update commute phase: IN_OFFICE -> RETURN
+        return if (event.zoneType == ZoneType.OFFICE && currentState.type == TrackingType.COMMUTE_OFFICE) {
+            // Update commute phase: IN_OFFICE -> RETURN (always)
             commutePhaseTracker.exitOffice()
+            if (commuteDayChecker.isInReturnWindow(event.timestamp.toLocalTime())) {
+                // Evening: auto-pause for the walk from office to station
+                handlePauseStart(currentState)
+            } else {
+                // Lunch break or other exit: phase updated but no pause
+                null
+            }
+        } else {
+            null
         }
-        // Geofence exits never change tracking state directly
-        return null
     }
 
     private suspend fun handleBeaconDetectedWhileIdle(
@@ -267,6 +276,60 @@ class TrackingStateMachine @Inject constructor(
     private suspend fun handleManualStop(entryId: String): TrackingState {
         repository.stopTracking(entryId)
         commutePhaseTracker.reset()
+        return TrackingState.Idle
+    }
+
+    private suspend fun handleOfficeStationEnteredWhileTracking(
+        currentState: TrackingState.Tracking,
+        @Suppress("UNUSED_PARAMETER") event: TrackingEvent.GeofenceEntered
+    ): TrackingState? {
+        if (currentState.type != TrackingType.COMMUTE_OFFICE) return null
+        if (commutePhaseTracker.currentPhase.value != CommutePhase.OUTBOUND) return null
+        return handlePauseStart(currentState)
+    }
+
+    private suspend fun handleGeofenceEnteredWhilePaused(
+        currentState: TrackingState.Paused,
+        event: TrackingEvent.GeofenceEntered
+    ): TrackingState? {
+        return when (event.zoneType) {
+            ZoneType.OFFICE -> {
+                // Morning: resume when arriving at office
+                if (currentState.type == TrackingType.COMMUTE_OFFICE &&
+                    commutePhaseTracker.currentPhase.value == CommutePhase.OUTBOUND) {
+                    commutePhaseTracker.enterOffice()
+                    handlePauseEnd(currentState)
+                } else null
+            }
+            ZoneType.HOME_STATION -> handleReturnToHomeStationWhilePaused(currentState, event)
+            else -> null
+        }
+    }
+
+    private suspend fun handleGeofenceExitedWhilePaused(
+        currentState: TrackingState.Paused,
+        event: TrackingEvent.GeofenceExited
+    ): TrackingState? {
+        // Evening: EXIT OFFICE_STATION resumes tracking (on the train home)
+        if (event.zoneType != ZoneType.OFFICE_STATION) return null
+        if (currentState.type != TrackingType.COMMUTE_OFFICE) return null
+        if (commutePhaseTracker.currentPhase.value != CommutePhase.RETURN) return null
+        return handlePauseEnd(currentState)
+    }
+
+    private suspend fun handleReturnToHomeStationWhilePaused(
+        currentState: TrackingState.Paused,
+        event: TrackingEvent.GeofenceEntered
+    ): TrackingState? {
+        // Stop tracking from PAUSED state (EXIT OFFICE_STATION may never have fired)
+        if (currentState.type != TrackingType.COMMUTE_OFFICE) return null
+        if (!commuteDayChecker.isInReturnWindow(event.timestamp.toLocalTime())) return null
+        val phase = commutePhaseTracker.currentPhase.value
+        if (phase != CommutePhase.RETURN && phase != CommutePhase.OUTBOUND) return null
+
+        repository.stopPause(currentState.entryId)
+        repository.stopTracking(currentState.entryId, endTime = event.timestamp)
+        commutePhaseTracker.completeCommute()
         return TrackingState.Idle
     }
 

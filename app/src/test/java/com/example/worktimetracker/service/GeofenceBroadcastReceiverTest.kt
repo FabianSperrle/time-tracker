@@ -73,7 +73,7 @@ class GeofenceBroadcastReceiverTest {
     }
 
     @Test
-    fun `mapTransitionToEvent returns null for OFFICE_STATION ENTER (informational only)`() {
+    fun `mapTransitionToEvent maps ENTER with OFFICE_STATION to GeofenceEntered`() {
         // Act
         val event = GeofenceBroadcastReceiver.mapTransitionToEvent(
             transition = Geofence.GEOFENCE_TRANSITION_ENTER,
@@ -81,11 +81,12 @@ class GeofenceBroadcastReceiverTest {
         )
 
         // Assert
-        assertNull(event)
+        assertTrue(event is TrackingEvent.GeofenceEntered)
+        assertEquals(ZoneType.OFFICE_STATION, (event as TrackingEvent.GeofenceEntered).zoneType)
     }
 
     @Test
-    fun `mapTransitionToEvent returns null for OFFICE_STATION EXIT`() {
+    fun `mapTransitionToEvent maps EXIT with OFFICE_STATION to GeofenceExited`() {
         // Act
         val event = GeofenceBroadcastReceiver.mapTransitionToEvent(
             transition = Geofence.GEOFENCE_TRANSITION_EXIT,
@@ -93,7 +94,8 @@ class GeofenceBroadcastReceiverTest {
         )
 
         // Assert
-        assertNull(event)
+        assertTrue(event is TrackingEvent.GeofenceExited)
+        assertEquals(ZoneType.OFFICE_STATION, (event as TrackingEvent.GeofenceExited).zoneType)
     }
 
     @Test

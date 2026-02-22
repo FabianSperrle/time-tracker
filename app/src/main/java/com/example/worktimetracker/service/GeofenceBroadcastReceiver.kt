@@ -41,19 +41,13 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         /**
          * Maps a geofence transition and zone type to a TrackingEvent.
          *
-         * Returns null for OFFICE_STATION zones (informational only)
-         * and for DWELL transitions (not used).
+         * Returns null for DWELL transitions (not used).
          *
          * @param transition The geofence transition type (ENTER, EXIT, DWELL)
          * @param zoneType The type of zone that triggered the transition
          * @return The corresponding TrackingEvent, or null if the transition should be ignored
          */
         fun mapTransitionToEvent(transition: Int, zoneType: ZoneType): TrackingEvent? {
-            // OFFICE_STATION transitions are informational only (logging)
-            if (zoneType == ZoneType.OFFICE_STATION) {
-                return null
-            }
-
             return when (transition) {
                 Geofence.GEOFENCE_TRANSITION_ENTER -> {
                     TrackingEvent.GeofenceEntered(zoneType)
@@ -126,7 +120,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                             Log.e(TAG, "Failed to process event $event in state machine", e)
                         }
                     } else {
-                        Log.d(TAG, "Transition $transitionName for ${zone.zoneType} is informational only")
+                        Log.d(TAG, "Ignoring DWELL transition for ${zone.zoneType}")
                     }
                 }
             } catch (e: Exception) {

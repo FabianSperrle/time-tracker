@@ -10,7 +10,7 @@ data class GeofenceZone(
     val name: String,
     val latitude: Double,
     val longitude: Double,
-    val radiusMeters: Float = 150f,
+    val radiusMeters: Float = 500f,
     val zoneType: ZoneType,
     val color: Int
 )
