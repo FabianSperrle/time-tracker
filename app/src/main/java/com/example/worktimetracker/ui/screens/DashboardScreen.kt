@@ -8,15 +8,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -94,8 +91,6 @@ fun DashboardScreen(
 private fun IdleCard(
     onStartManual: (TrackingType) -> Unit
 ) {
-    var showDropdown by remember { mutableStateOf(false) }
-
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -112,38 +107,22 @@ private fun IdleCard(
                 modifier = Modifier.padding(bottom = 24.dp)
             )
 
-            Button(
-                onClick = { showDropdown = true },
-                modifier = Modifier.fillMaxWidth(0.8f)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Tracking starten")
-            }
-
-            DropdownMenu(
-                expanded = showDropdown,
-                onDismissRequest = { showDropdown = false }
-            ) {
-                DropdownMenuItem(
-                    text = { Text("Home Office") },
-                    onClick = {
-                        showDropdown = false
-                        onStartManual(TrackingType.HOME_OFFICE)
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text("Büro") },
-                    onClick = {
-                        showDropdown = false
-                        onStartManual(TrackingType.COMMUTE_OFFICE)
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text("Sonstiges") },
-                    onClick = {
-                        showDropdown = false
-                        onStartManual(TrackingType.MANUAL)
-                    }
-                )
+                Button(
+                    onClick = { onStartManual(TrackingType.HOME_OFFICE) },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Home Office")
+                }
+                Button(
+                    onClick = { onStartManual(TrackingType.COMMUTE_OFFICE) },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Büro")
+                }
             }
         }
     }
