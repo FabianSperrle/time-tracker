@@ -4,10 +4,14 @@ import com.example.worktimetracker.data.settings.SettingsProvider
 import com.example.worktimetracker.di.BeaconScannerScope
 import com.example.worktimetracker.domain.homeoffice.HomeOfficeTracker
 import com.example.worktimetracker.domain.model.BeaconConfig
+import com.example.worktimetracker.domain.model.BeaconScanResult
 import com.example.worktimetracker.domain.model.TimeWindow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.altbeacon.beacon.Beacon
@@ -21,7 +25,6 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
-import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -52,6 +55,19 @@ class BeaconScanner @Inject constructor(
     var isMonitoringActive: Boolean = false
         private set
 
+    // --- Test scanning (Feature 1) ---
+
+    private val _scanResults = MutableStateFlow<List<BeaconScanResult>>(emptyList())
+    val scanResults: StateFlow<List<BeaconScanResult>> = _scanResults.asStateFlow()
+
+    private var testRegion: Region? = null
+    private var testRangeNotifier: RangeNotifier? = null
+
+    // --- RSSI threshold detection (Feature 2 runtime) ---
+
+    internal var isBeaconInRssiRange: Boolean = false
+    private var rssiRangeNotifier: RangeNotifier? = null
+
     /**
      * Retrieves the current beacon configuration from settings.
      */
@@ -60,12 +76,14 @@ class BeaconScanner @Inject constructor(
         val scanInterval = settingsProvider.bleScanInterval.first()
         val timeout = settingsProvider.beaconTimeout.first()
         val timeWindow = settingsProvider.workTimeWindow.first()
+        val rssiThreshold = settingsProvider.beaconRssiThreshold.first()
 
         return BeaconConfig(
             uuid = uuid,
             scanIntervalMs = scanInterval,
             timeoutMinutes = timeout,
-            validTimeWindow = timeWindow
+            validTimeWindow = timeWindow,
+            rssiThreshold = rssiThreshold
         )
     }
 
@@ -103,37 +121,81 @@ class BeaconScanner @Inject constructor(
             backgroundBetweenScanPeriod = config.scanIntervalMs
         }
 
-        // Set up monitoring callbacks with exception handling (Finding 4)
-        beaconManager.addMonitorNotifier(object : MonitorNotifier {
-            override fun didEnterRegion(region: Region) {
-                scope.launch {
-                    try {
-                        onBeaconDetected()
-                    } catch (e: Exception) {
-                        // Gracefully handle errors (e.g. config not available)
+        if (config.rssiThreshold != null) {
+            // RSSI-threshold mode: use RangeNotifier with edge-triggered logic
+            val threshold = config.rssiThreshold
+            val notifier = object : RangeNotifier {
+                override fun didRangeBeaconsInRegion(beacons: Collection<Beacon>, region: Region) {
+                    val nowInRange = beacons.any { b ->
+                        b.id1.toString().equals(config.uuid, ignoreCase = true) && b.rssi >= threshold
                     }
+                    applyRssiRanging(nowInRange)
                 }
             }
-
-            override fun didExitRegion(region: Region) {
-                scope.launch {
-                    try {
-                        onBeaconLostFromRegion()
-                    } catch (e: Exception) {
-                        // Gracefully handle errors
+            rssiRangeNotifier = notifier
+            beaconManager.addRangeNotifier(notifier)
+            beaconManager.startRangingBeacons(region)
+        } else {
+            // Standard mode: use MonitorNotifier
+            beaconManager.addMonitorNotifier(object : MonitorNotifier {
+                override fun didEnterRegion(region: Region) {
+                    scope.launch {
+                        try {
+                            onBeaconDetected()
+                        } catch (e: Exception) {
+                            // Gracefully handle errors (e.g. config not available)
+                        }
                     }
                 }
-            }
 
-            override fun didDetermineStateForRegion(state: Int, region: Region) {
-                // Not used in this implementation
-            }
-        })
+                override fun didExitRegion(region: Region) {
+                    scope.launch {
+                        try {
+                            onBeaconLostFromRegion()
+                        } catch (e: Exception) {
+                            // Gracefully handle errors
+                        }
+                    }
+                }
 
-        // Start monitoring
-        beaconManager.startMonitoring(region)
-        beaconManager.startRangingBeacons(region)
+                override fun didDetermineStateForRegion(state: Int, region: Region) {
+                    // Not used in this implementation
+                }
+            })
+
+            // Start monitoring
+            beaconManager.startMonitoring(region)
+            beaconManager.startRangingBeacons(region)
+        }
+
         isMonitoringActive = true
+    }
+
+    /**
+     * Applies edge-triggered RSSI ranging logic.
+     * Calls onBeaconDetected on false→true transition, onBeaconLostFromRegion on true→false.
+     * Internal visibility for unit testing.
+     */
+    internal fun applyRssiRanging(nowInRange: Boolean) {
+        if (nowInRange && !isBeaconInRssiRange) {
+            isBeaconInRssiRange = true
+            scope.launch {
+                try {
+                    onBeaconDetected()
+                } catch (e: Exception) {
+                    // Gracefully handle errors
+                }
+            }
+        } else if (!nowInRange && isBeaconInRssiRange) {
+            isBeaconInRssiRange = false
+            scope.launch {
+                try {
+                    onBeaconLostFromRegion()
+                } catch (e: Exception) {
+                    // Gracefully handle errors
+                }
+            }
+        }
     }
 
     /**
@@ -144,12 +206,84 @@ class BeaconScanner @Inject constructor(
             beaconManager.stopMonitoring(region)
             beaconManager.stopRangingBeacons(region)
         }
+        rssiRangeNotifier?.let { beaconManager.removeRangeNotifier(it) }
+        rssiRangeNotifier = null
+        isBeaconInRssiRange = false
         currentRegion = null
         currentConfig = null
         timeoutJob?.cancel()
         timeoutJob = null
         lastSeenTimestamp = null
         isMonitoringActive = false
+    }
+
+    /**
+     * Starts scanning all nearby beacons for test/discovery purposes.
+     * Results are emitted via [scanResults].
+     */
+    fun startBeaconTest() {
+        val wildcardRegion = Region("beacon-test-wildcard", null, null, null)
+        testRegion = wildcardRegion
+
+        if (beaconManager.beaconParsers.isEmpty()) {
+            beaconManager.beaconParsers.add(
+                BeaconParser().setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24")
+            )
+        }
+
+        val notifier = object : RangeNotifier {
+            override fun didRangeBeaconsInRegion(beacons: Collection<Beacon>, region: Region) {
+                scope.launch {
+                    val currentConfiguredUuid = settingsProvider.beaconUuid.first()
+                    val results = beacons.map { beacon ->
+                        BeaconScanResult(
+                            uuid = beacon.id1.toString(),
+                            rssi = beacon.rssi,
+                            distance = beacon.distance,
+                            isConfigured = currentConfiguredUuid != null &&
+                                beacon.id1.toString().equals(currentConfiguredUuid, ignoreCase = true)
+                        )
+                    }.sortedByDescending { it.rssi }
+                    _scanResults.value = results
+                }
+            }
+        }
+        testRangeNotifier = notifier
+        beaconManager.addRangeNotifier(notifier)
+        beaconManager.startRangingBeacons(wildcardRegion)
+    }
+
+    /**
+     * Stops beacon test scanning and clears results.
+     */
+    fun stopBeaconTest() {
+        testRegion?.let { region ->
+            beaconManager.stopRangingBeacons(region)
+        }
+        testRangeNotifier?.let { beaconManager.removeRangeNotifier(it) }
+        testRegion = null
+        testRangeNotifier = null
+        _scanResults.value = emptyList()
+    }
+
+    /**
+     * Sets fast scan mode for calibration (1100ms period for responsiveness).
+     */
+    fun enableFastScanMode() {
+        beaconManager.foregroundScanPeriod = 1100L
+        beaconManager.foregroundBetweenScanPeriod = 0L
+        beaconManager.updateScanPeriods()
+    }
+
+    /**
+     * Restores normal scan mode after calibration.
+     */
+    fun disableFastScanMode() {
+        val config = currentConfig
+        val interval = config?.scanIntervalMs ?: 60_000L
+        beaconManager.foregroundScanPeriod = interval
+        beaconManager.foregroundBetweenScanPeriod = interval
+        beaconManager.updateScanPeriods()
     }
 
     /**
@@ -253,15 +387,6 @@ class BeaconScanner @Inject constructor(
             // Delegate to HomeOfficeTracker for business logic
             homeOfficeTracker.onBeaconTimeout(timestamp = now, lastSeenTimestamp = lastSeenLocal)
         }
-    }
-
-    /**
-     * Checks if current time is within the valid scanning window.
-     */
-    private fun isInValidTimeWindow(): Boolean {
-        val config = currentConfig ?: return false
-        val now = LocalTime.now()
-        return isTimeInWindow(now, config.validTimeWindow)
     }
 
     /**

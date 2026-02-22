@@ -59,6 +59,8 @@ class BeaconScannerTest {
         )
     )
 
+    private val testConfigWithThreshold = testConfig.copy(rssiThreshold = -70)
+
     @BeforeEach
     fun setUp() {
         testScope = TestScope(testDispatcher)
@@ -70,6 +72,7 @@ class BeaconScannerTest {
         every { settingsProvider.bleScanInterval } returns flowOf(testConfig.scanIntervalMs)
         every { settingsProvider.beaconTimeout } returns flowOf(testConfig.timeoutMinutes)
         every { settingsProvider.workTimeWindow } returns flowOf(testConfig.validTimeWindow)
+        every { settingsProvider.beaconRssiThreshold } returns flowOf(null)
 
         beaconScanner = BeaconScanner(
             beaconManager = beaconManager,
@@ -111,6 +114,25 @@ class BeaconScannerTest {
             assertEquals(10, config.timeoutMinutes)
             assertEquals(LocalTime.of(6, 0), config.validTimeWindow.start)
             assertEquals(LocalTime.of(22, 0), config.validTimeWindow.end)
+            assertNull(config.rssiThreshold)
+        }
+
+        @Test
+        fun `getBeaconConfig includes rssiThreshold from settings when configured`() = runTest {
+            every { settingsProvider.beaconRssiThreshold } returns flowOf(-70)
+
+            val config = beaconScanner.getBeaconConfig()
+
+            assertEquals(-70, config.rssiThreshold)
+        }
+
+        @Test
+        fun `getBeaconConfig has null rssiThreshold when not calibrated`() = runTest {
+            every { settingsProvider.beaconRssiThreshold } returns flowOf(null)
+
+            val config = beaconScanner.getBeaconConfig()
+
+            assertNull(config.rssiThreshold)
         }
     }
 
@@ -357,6 +379,80 @@ class BeaconScannerTest {
 
             // Assert
             assertFalse(beaconScanner.isMonitoringActive)
+        }
+    }
+
+    // ========== RSSI Threshold Edge-Trigger Tests ==========
+
+    @Nested
+    inner class RssiThresholdTests {
+        @Test
+        fun `applyRssiRanging calls onBeaconDetected on false-to-true transition`() = testScope.runTest {
+            // Arrange: isBeaconInRssiRange starts false, config set for delegation
+            setCurrentConfig(testConfigWithThreshold)
+
+            // Act: transition false -> true
+            beaconScanner.applyRssiRanging(nowInRange = true)
+            testScope.testScheduler.runCurrent()
+
+            // Assert: onBeaconDetected was called
+            coVerify { homeOfficeTracker.onBeaconDetected(uuid = testUuid, timestamp = any()) }
+            assertTrue(beaconScanner.isBeaconInRssiRange)
+        }
+
+        @Test
+        fun `applyRssiRanging does not call onBeaconDetected if already in range`() = testScope.runTest {
+            // Arrange: pre-set isBeaconInRssiRange to true
+            setCurrentConfig(testConfigWithThreshold)
+            beaconScanner.isBeaconInRssiRange = true
+
+            // Act: stays true (no edge)
+            beaconScanner.applyRssiRanging(nowInRange = true)
+            testScope.testScheduler.runCurrent()
+
+            // Assert: no call
+            coVerify(exactly = 0) { homeOfficeTracker.onBeaconDetected(any(), any()) }
+        }
+
+        @Test
+        fun `applyRssiRanging calls onBeaconLostFromRegion on true-to-false transition`() = testScope.runTest {
+            // Arrange: pre-set isBeaconInRssiRange to true, config must be set for timeout
+            setCurrentConfig(testConfigWithThreshold)
+            beaconScanner.isBeaconInRssiRange = true
+
+            // Act: transition true -> false
+            beaconScanner.applyRssiRanging(nowInRange = false)
+            testScope.testScheduler.runCurrent()
+
+            // Assert: timeout job started (onBeaconLostFromRegion starts timeout)
+            assertNotNull(beaconScanner.timeoutJob)
+            assertFalse(beaconScanner.isBeaconInRssiRange)
+        }
+
+        @Test
+        fun `applyRssiRanging does not call onBeaconLostFromRegion if already out of range`() = testScope.runTest {
+            // Arrange: isBeaconInRssiRange is already false
+            setCurrentConfig(testConfigWithThreshold)
+
+            // Act: stays false (no edge)
+            beaconScanner.applyRssiRanging(nowInRange = false)
+            testScope.testScheduler.runCurrent()
+
+            // Assert: no timeout job
+            assertNull(beaconScanner.timeoutJob)
+        }
+
+        @Test
+        fun `stopMonitoring resets isBeaconInRssiRange to false`() = testScope.runTest {
+            // Arrange: set in-range
+            setCurrentConfig(testConfigWithThreshold)
+            beaconScanner.isBeaconInRssiRange = true
+
+            // Act
+            beaconScanner.stopMonitoring()
+
+            // Assert
+            assertFalse(beaconScanner.isBeaconInRssiRange)
         }
     }
 

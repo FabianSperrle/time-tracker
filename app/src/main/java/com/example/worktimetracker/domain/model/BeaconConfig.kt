@@ -21,5 +21,6 @@ data class BeaconConfig(
     val validTimeWindow: TimeWindow = TimeWindow(
         start = LocalTime.of(6, 0),
         end = LocalTime.of(22, 0)
-    )
+    ),
+    val rssiThreshold: Int? = null
 )

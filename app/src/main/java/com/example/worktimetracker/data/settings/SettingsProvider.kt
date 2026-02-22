@@ -35,6 +35,7 @@ class SettingsProvider @Inject constructor(
         val WORK_TIME_WINDOW_START = stringPreferencesKey("work_time_window_start")
         val WORK_TIME_WINDOW_END = stringPreferencesKey("work_time_window_end")
         val WEEKLY_TARGET_HOURS = floatPreferencesKey("weekly_target_hours")
+        val BEACON_RSSI_THRESHOLD = intPreferencesKey("beacon_rssi_threshold")
     }
 
     /**
@@ -124,6 +125,13 @@ class SettingsProvider @Inject constructor(
     }
 
     /**
+     * Flow of RSSI threshold for beacon proximity detection. Null if not calibrated.
+     */
+    val beaconRssiThreshold: Flow<Int?> = dataStore.data.map { preferences ->
+        preferences[Keys.BEACON_RSSI_THRESHOLD]
+    }
+
+    /**
      * Sets the commute days.
      */
     suspend fun setCommuteDays(days: Set<DayOfWeek>) {
@@ -202,6 +210,19 @@ class SettingsProvider @Inject constructor(
         require(hours in 0f..80f) { "Weekly target hours must be between 0 and 80" }
         dataStore.edit { preferences ->
             preferences[Keys.WEEKLY_TARGET_HOURS] = hours
+        }
+    }
+
+    /**
+     * Sets the RSSI threshold for beacon proximity detection. Null removes the threshold.
+     */
+    suspend fun setBeaconRssiThreshold(threshold: Int?) {
+        dataStore.edit { preferences ->
+            if (threshold != null) {
+                preferences[Keys.BEACON_RSSI_THRESHOLD] = threshold
+            } else {
+                preferences.remove(Keys.BEACON_RSSI_THRESHOLD)
+            }
         }
     }
 

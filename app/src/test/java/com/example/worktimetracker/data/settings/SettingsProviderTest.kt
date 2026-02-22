@@ -37,4 +37,9 @@ class SettingsProviderTest {
         assertEquals("beacon_uuid", SettingsProvider.Keys.BEACON_UUID.name)
         assertEquals("weekly_target_hours", SettingsProvider.Keys.WEEKLY_TARGET_HOURS.name)
     }
+
+    @Test
+    fun `BEACON_RSSI_THRESHOLD key has correct name`() {
+        assertEquals("beacon_rssi_threshold", SettingsProvider.Keys.BEACON_RSSI_THRESHOLD.name)
+    }
 }

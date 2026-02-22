@@ -2,6 +2,7 @@ package com.example.worktimetracker.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,14 +10,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -37,6 +45,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.worktimetracker.domain.model.BeaconScanResult
 import com.example.worktimetracker.domain.model.TimeWindow
 import com.example.worktimetracker.ui.viewmodel.SettingsViewModel
 import java.time.DayOfWeek
@@ -52,6 +61,8 @@ fun SettingsScreen(
     onNavigateToPermissions: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val scanResults by viewModel.beaconScanResults.collectAsStateWithLifecycle()
+    val liveRssi by viewModel.liveRssi.collectAsStateWithLifecycle()
 
     Scaffold { paddingValues ->
         Column(
@@ -107,6 +118,22 @@ fun SettingsScreen(
                 value = "${uiState.bleScanInterval / 1000} sek",
                 onClick = { viewModel.showBleScanIntervalDialog() }
             )
+            SettingsItem(
+                label = "Beacon testen",
+                value = when {
+                    uiState.beaconUuid == null -> "Scannt alle Beacons in Reichweite"
+                    uiState.beaconRssiThreshold != null -> "Kalibriert (${uiState.beaconRssiThreshold} dBm)"
+                    else -> "Nicht kalibriert"
+                },
+                onClick = { viewModel.showBeaconTestDialog() }
+            )
+            if (uiState.beaconRssiThreshold != null) {
+                SettingsItem(
+                    label = "Reichweiten-Schwellenwert",
+                    value = "${uiState.beaconRssiThreshold} dBm",
+                    onClick = { viewModel.startCalibration() }
+                )
+            }
 
             // Work Time Section
             SettingsSectionHeader(title = "ARBEITSZEIT")
@@ -282,6 +309,31 @@ fun SettingsScreen(
             }
         )
     }
+
+    // Beacon Test Dialog
+    if (uiState.showBeaconTestDialog) {
+        BeaconTestDialog(
+            results = scanResults,
+            onSelect = { uuid -> viewModel.selectBeaconFromTest(uuid) },
+            onCalibrate = { viewModel.startCalibration() },
+            onDismiss = { viewModel.dismissBeaconTestDialog() }
+        )
+    }
+
+    // Calibration Wizard Dialog
+    if (uiState.showCalibrationWizard) {
+        CalibrationWizardDialog(
+            step = uiState.calibrationStep,
+            atDeskRssi = uiState.atDeskRssi,
+            awayRssi = uiState.awayRssi,
+            liveRssi = liveRssi,
+            onMeasureDesk = { viewModel.recordAtDeskRssi() },
+            onMeasureAway = { viewModel.recordAwayRssi() },
+            onConfirm = { viewModel.confirmCalibration() },
+            onBack = { viewModel.backToCalibrationStep1() },
+            onDismiss = { viewModel.dismissCalibrationWizard() }
+        )
+    }
 }
 
 /**
@@ -350,6 +402,231 @@ private fun formatCommuteDays(days: Set<DayOfWeek>): String {
         .sortedBy { it.value }
         .mapNotNull { dayNames[it] }
         .joinToString(", ")
+}
+
+/**
+ * Returns signal strength bar count (1-4) based on RSSI.
+ */
+private fun rssiToSignalBars(rssi: Int): Int = when {
+    rssi >= -60 -> 4
+    rssi >= -70 -> 3
+    rssi >= -80 -> 2
+    else -> 1
+}
+
+/**
+ * Returns a visual representation of signal strength using Unicode blocks.
+ */
+private fun signalBarsText(rssi: Int): String {
+    val bars = rssiToSignalBars(rssi)
+    return "▮".repeat(bars) + "▯".repeat(4 - bars)
+}
+
+/**
+ * Dialog showing all nearby beacons in real time for testing/discovery.
+ */
+@Composable
+private fun BeaconTestDialog(
+    results: List<BeaconScanResult>,
+    onSelect: (String) -> Unit,
+    onCalibrate: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Beacon testen") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                if (results.isEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.size(12.dp))
+                        Text("Suche läuft...")
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                        items(results) { result ->
+                            BeaconResultRow(
+                                result = result,
+                                onSelect = onSelect,
+                                onCalibrate = onCalibrate
+                            )
+                            HorizontalDivider()
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Schließen")
+            }
+        }
+    )
+}
+
+/**
+ * A single row in the beacon test dialog showing beacon info and action buttons.
+ */
+@Composable
+private fun BeaconResultRow(
+    result: BeaconScanResult,
+    onSelect: (String) -> Unit,
+    onCalibrate: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = result.uuid,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = if (result.isConfigured) FontWeight.Bold else FontWeight.Normal
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "${result.rssi} dBm",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = signalBarsText(result.rssi),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "~${"%.1f".format(result.distance)} m",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (result.isConfigured) {
+                Badge { Text("✓") }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (!result.isConfigured) {
+                OutlinedButton(
+                    onClick = { onSelect(result.uuid) },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Verwenden", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+            if (result.isConfigured) {
+                OutlinedButton(
+                    onClick = onCalibrate,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Kalibrieren", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 3-step calibration wizard dialog for setting the RSSI proximity threshold.
+ */
+@Composable
+private fun CalibrationWizardDialog(
+    step: Int,
+    atDeskRssi: Int?,
+    awayRssi: Int?,
+    liveRssi: Int?,
+    onMeasureDesk: () -> Unit,
+    onMeasureAway: () -> Unit,
+    onConfirm: () -> Unit,
+    onBack: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Reichweite kalibrieren – Schritt $step/3") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                when (step) {
+                    1 -> {
+                        Text("Setz dich an deinen Schreibtisch in normalem Abstand zum Beacon. Tippe dann 'Jetzt messen'.")
+                        liveRssi?.let {
+                            Text(
+                                text = "Aktuelles Signal: $it dBm  ${signalBarsText(it)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    2 -> {
+                        Text("Geh jetzt an den Ort, ab dem das Tracking aufhören soll (z. B. Küche). Wenn du dort bist, tippe 'Hier bin ich weg'.")
+                        atDeskRssi?.let {
+                            Text(
+                                text = "Signal am Schreibtisch: $it dBm",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        liveRssi?.let {
+                            Text(
+                                text = "Aktuelles Signal: $it dBm  ${signalBarsText(it)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    3 -> {
+                        val threshold = if (atDeskRssi != null && awayRssi != null) {
+                            (atDeskRssi + awayRssi) / 2
+                        } else null
+
+                        atDeskRssi?.let { Text("Signal am Schreibtisch: $it dBm") }
+                        awayRssi?.let { Text("Signal weg vom Tisch: $it dBm") }
+                        threshold?.let {
+                            Text(
+                                text = "Schwellenwert: $it dBm — Tracking startet ab diesem Signal, stoppt darunter.",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            when (step) {
+                1 -> Button(onClick = onMeasureDesk) { Text("Jetzt messen") }
+                2 -> Button(onClick = onMeasureAway) { Text("Hier bin ich weg") }
+                3 -> Button(onClick = onConfirm) { Text("Speichern") }
+            }
+        },
+        dismissButton = {
+            Row {
+                if (step == 3) {
+                    TextButton(onClick = onBack) { Text("Zurück") }
+                }
+                TextButton(onClick = onDismiss) { Text("Abbrechen") }
+            }
+        }
+    )
 }
 
 /**

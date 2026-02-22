@@ -4,10 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.worktimetracker.data.repository.GeofenceRepository
 import com.example.worktimetracker.data.settings.SettingsProvider
+import com.example.worktimetracker.domain.model.BeaconScanResult
 import com.example.worktimetracker.domain.model.TimeWindow
+import com.example.worktimetracker.service.BeaconScanner
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -22,10 +25,26 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsProvider: SettingsProvider,
-    private val geofenceRepository: GeofenceRepository
+    private val geofenceRepository: GeofenceRepository,
+    private val beaconScanner: BeaconScanner
 ) : ViewModel() {
 
     private val _dialogState = MutableStateFlow(DialogState())
+
+    /** Scan results from test scanning mode. */
+    val beaconScanResults: StateFlow<List<BeaconScanResult>> = beaconScanner.scanResults
+
+    /** Latest RSSI of the configured beacon from scan results (for calibration live display). */
+    val liveRssi: StateFlow<Int?> = combine(
+        beaconScanner.scanResults,
+        settingsProvider.beaconUuid
+    ) { results, configuredUuid ->
+        results.find { it.isConfigured || (configuredUuid != null && it.uuid.equals(configuredUuid, ignoreCase = true)) }?.rssi
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = null
+    )
 
     /**
      * UI state for the settings screen.
@@ -47,9 +66,14 @@ class SettingsViewModel @Inject constructor(
         ) { beaconTimeout, bleScanInterval, workTimeWindow, weeklyTargetHours ->
             PartialSettings2(beaconTimeout, bleScanInterval, workTimeWindow, weeklyTargetHours)
         },
-        _dialogState,
+        combine(
+            _dialogState,
+            settingsProvider.beaconRssiThreshold
+        ) { dialogState, rssiThreshold ->
+            Pair(dialogState, rssiThreshold)
+        },
         geofenceRepository.getAllZones().map { it.size }
-    ) { partial1, partial2, dialogState, zoneCount ->
+    ) { partial1, partial2, (dialogState, rssiThreshold), zoneCount ->
         SettingsUiState(
             commuteDays = partial1.commuteDays,
             outboundWindow = partial1.outboundWindow,
@@ -60,6 +84,7 @@ class SettingsViewModel @Inject constructor(
             workTimeWindow = partial2.workTimeWindow,
             weeklyTargetHours = partial2.weeklyTargetHours,
             zoneCount = zoneCount,
+            beaconRssiThreshold = rssiThreshold,
             showResetConfirmation = dialogState.showResetConfirmation,
             showCommuteDaysDialog = dialogState.showCommuteDaysDialog,
             showOutboundWindowDialog = dialogState.showOutboundWindowDialog,
@@ -68,7 +93,12 @@ class SettingsViewModel @Inject constructor(
             showBeaconTimeoutDialog = dialogState.showBeaconTimeoutDialog,
             showBleScanIntervalDialog = dialogState.showBleScanIntervalDialog,
             showWeeklyTargetHoursDialog = dialogState.showWeeklyTargetHoursDialog,
-            showBeaconUuidDialog = dialogState.showBeaconUuidDialog
+            showBeaconUuidDialog = dialogState.showBeaconUuidDialog,
+            showBeaconTestDialog = dialogState.showBeaconTestDialog,
+            showCalibrationWizard = dialogState.showCalibrationWizard,
+            calibrationStep = dialogState.calibrationStep,
+            atDeskRssi = dialogState.atDeskRssi,
+            awayRssi = dialogState.awayRssi
         )
     }.stateIn(
         scope = viewModelScope,
@@ -295,6 +325,109 @@ class SettingsViewModel @Inject constructor(
     fun dismissBeaconUuidDialog() {
         _dialogState.update { it.copy(showBeaconUuidDialog = false) }
     }
+
+    // --- Beacon Test Dialog ---
+
+    /**
+     * Opens the beacon test dialog and starts wildcard scanning.
+     */
+    fun showBeaconTestDialog() {
+        beaconScanner.startBeaconTest()
+        _dialogState.update { it.copy(showBeaconTestDialog = true) }
+    }
+
+    /**
+     * Closes the beacon test dialog and stops test scanning.
+     */
+    fun dismissBeaconTestDialog() {
+        beaconScanner.stopBeaconTest()
+        _dialogState.update { it.copy(showBeaconTestDialog = false) }
+    }
+
+    /**
+     * Adopts a UUID from the test dialog as the configured beacon UUID, then closes dialog.
+     */
+    fun selectBeaconFromTest(uuid: String) {
+        updateBeaconUuid(uuid)
+        dismissBeaconTestDialog()
+    }
+
+    // --- Calibration Wizard ---
+
+    /**
+     * Starts the calibration wizard (Step 1) from the test dialog.
+     */
+    fun startCalibration() {
+        beaconScanner.enableFastScanMode()
+        _dialogState.update { it.copy(
+            showBeaconTestDialog = false,
+            showCalibrationWizard = true,
+            calibrationStep = 1,
+            atDeskRssi = null,
+            awayRssi = null
+        ) }
+    }
+
+    /**
+     * Records the at-desk RSSI (average of currently visible configured beacon readings).
+     * Advances to Step 2.
+     */
+    fun recordAtDeskRssi() {
+        val configuredResult = beaconScanResults.value.find { it.isConfigured }
+        val rssi = configuredResult?.rssi ?: beaconScanResults.value.firstOrNull()?.rssi ?: return
+        _dialogState.update { it.copy(atDeskRssi = rssi, calibrationStep = 2) }
+    }
+
+    /**
+     * Records the away RSSI from the current live scan, advances to Step 3.
+     */
+    fun recordAwayRssi() {
+        val configuredResult = beaconScanResults.value.find { it.isConfigured }
+        val rssi = configuredResult?.rssi ?: beaconScanResults.value.firstOrNull()?.rssi ?: return
+        _dialogState.update { it.copy(awayRssi = rssi, calibrationStep = 3) }
+    }
+
+    /**
+     * Saves the computed threshold ((atDesk + away) / 2) and closes the wizard.
+     */
+    fun confirmCalibration() {
+        val state = _dialogState.value
+        val atDesk = state.atDeskRssi ?: return
+        val away = state.awayRssi ?: return
+        val threshold = (atDesk + away) / 2
+        viewModelScope.launch {
+            settingsProvider.setBeaconRssiThreshold(threshold)
+            beaconScanner.disableFastScanMode()
+            beaconScanner.stopBeaconTest()
+            _dialogState.update { it.copy(
+                showCalibrationWizard = false,
+                calibrationStep = 1,
+                atDeskRssi = null,
+                awayRssi = null
+            ) }
+        }
+    }
+
+    /**
+     * Goes back to Step 1 of the calibration wizard to redo measurements.
+     */
+    fun backToCalibrationStep1() {
+        _dialogState.update { it.copy(calibrationStep = 1, atDeskRssi = null, awayRssi = null) }
+    }
+
+    /**
+     * Cancels the calibration wizard without saving.
+     */
+    fun dismissCalibrationWizard() {
+        beaconScanner.disableFastScanMode()
+        beaconScanner.stopBeaconTest()
+        _dialogState.update { it.copy(
+            showCalibrationWizard = false,
+            calibrationStep = 1,
+            atDeskRssi = null,
+            awayRssi = null
+        ) }
+    }
 }
 
 /**
@@ -310,6 +443,7 @@ data class SettingsUiState(
     val workTimeWindow: TimeWindow = TimeWindow.DEFAULT_WORK_TIME,
     val weeklyTargetHours: Float = 40f,
     val zoneCount: Int = 0,
+    val beaconRssiThreshold: Int? = null,
     val showResetConfirmation: Boolean = false,
     val showCommuteDaysDialog: Boolean = false,
     val showOutboundWindowDialog: Boolean = false,
@@ -318,7 +452,12 @@ data class SettingsUiState(
     val showBeaconTimeoutDialog: Boolean = false,
     val showBleScanIntervalDialog: Boolean = false,
     val showWeeklyTargetHoursDialog: Boolean = false,
-    val showBeaconUuidDialog: Boolean = false
+    val showBeaconUuidDialog: Boolean = false,
+    val showBeaconTestDialog: Boolean = false,
+    val showCalibrationWizard: Boolean = false,
+    val calibrationStep: Int = 1,
+    val atDeskRssi: Int? = null,
+    val awayRssi: Int? = null
 )
 
 /**
@@ -333,7 +472,12 @@ private data class DialogState(
     val showBeaconTimeoutDialog: Boolean = false,
     val showBleScanIntervalDialog: Boolean = false,
     val showWeeklyTargetHoursDialog: Boolean = false,
-    val showBeaconUuidDialog: Boolean = false
+    val showBeaconUuidDialog: Boolean = false,
+    val showBeaconTestDialog: Boolean = false,
+    val showCalibrationWizard: Boolean = false,
+    val calibrationStep: Int = 1,
+    val atDeskRssi: Int? = null,
+    val awayRssi: Int? = null
 )
 
 /**

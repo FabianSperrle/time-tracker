@@ -4,6 +4,7 @@ import com.example.worktimetracker.data.local.entity.GeofenceZone
 import com.example.worktimetracker.data.repository.GeofenceRepository
 import com.example.worktimetracker.data.settings.SettingsProvider
 import com.example.worktimetracker.domain.model.TimeWindow
+import com.example.worktimetracker.service.BeaconScanner
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -32,6 +33,7 @@ class SettingsViewModelTest {
 
     private lateinit var settingsProvider: SettingsProvider
     private lateinit var geofenceRepository: GeofenceRepository
+    private lateinit var beaconScanner: BeaconScanner
     private lateinit var viewModel: SettingsViewModel
     private val testDispatcher = StandardTestDispatcher()
 
@@ -40,6 +42,7 @@ class SettingsViewModelTest {
         Dispatchers.setMain(testDispatcher)
         settingsProvider = mockk(relaxed = true)
         geofenceRepository = mockk(relaxed = true)
+        beaconScanner = mockk(relaxed = true)
 
         // Setup default flows
         every { settingsProvider.commuteDays } returns flowOf(emptySet())
@@ -50,9 +53,11 @@ class SettingsViewModelTest {
         every { settingsProvider.bleScanInterval } returns flowOf(60000L)
         every { settingsProvider.workTimeWindow } returns flowOf(TimeWindow.DEFAULT_WORK_TIME)
         every { settingsProvider.weeklyTargetHours } returns flowOf(40f)
+        every { settingsProvider.beaconRssiThreshold } returns flowOf(null)
         every { geofenceRepository.getAllZones() } returns flowOf(emptyList<GeofenceZone>())
+        every { beaconScanner.scanResults } returns kotlinx.coroutines.flow.MutableStateFlow(emptyList())
 
-        viewModel = SettingsViewModel(settingsProvider, geofenceRepository)
+        viewModel = SettingsViewModel(settingsProvider, geofenceRepository, beaconScanner)
     }
 
     @After
