@@ -222,6 +222,7 @@ class BeaconScanner @Inject constructor(
      * Results are emitted via [scanResults].
      */
     fun startBeaconTest() {
+        enableFastScanMode()
         val wildcardRegion = Region("beacon-test-wildcard", null, null, null)
         testRegion = wildcardRegion
 
@@ -264,6 +265,7 @@ class BeaconScanner @Inject constructor(
         testRegion = null
         testRangeNotifier = null
         _scanResults.value = emptyList()
+        disableFastScanMode()
     }
 
     /**
