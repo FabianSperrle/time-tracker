@@ -19,7 +19,7 @@ class CommuteReminderLogicTest {
                 currentTime = LocalTime.of(10, 30),
                 reminderTime = LocalTime.of(10, 0),
                 isCommuteDay = true,
-                hasActiveTracking = false
+                hasTrackingToday = false
             )
             assertTrue(result)
         }
@@ -30,7 +30,7 @@ class CommuteReminderLogicTest {
                 currentTime = LocalTime.of(10, 0),
                 reminderTime = LocalTime.of(10, 0),
                 isCommuteDay = true,
-                hasActiveTracking = false
+                hasTrackingToday = false
             )
             assertTrue(result)
         }
@@ -41,7 +41,7 @@ class CommuteReminderLogicTest {
                 currentTime = LocalTime.of(10, 30),
                 reminderTime = LocalTime.of(10, 0),
                 isCommuteDay = false,
-                hasActiveTracking = false
+                hasTrackingToday = false
             )
             assertFalse(result)
         }
@@ -52,7 +52,7 @@ class CommuteReminderLogicTest {
                 currentTime = LocalTime.of(10, 30),
                 reminderTime = LocalTime.of(10, 0),
                 isCommuteDay = true,
-                hasActiveTracking = true
+                hasTrackingToday = true
             )
             assertFalse(result)
         }
@@ -63,7 +63,7 @@ class CommuteReminderLogicTest {
                 currentTime = LocalTime.of(9, 30),
                 reminderTime = LocalTime.of(10, 0),
                 isCommuteDay = true,
-                hasActiveTracking = false
+                hasTrackingToday = false
             )
             assertFalse(result)
         }
@@ -74,7 +74,7 @@ class CommuteReminderLogicTest {
                 currentTime = LocalTime.of(9, 59),
                 reminderTime = LocalTime.of(10, 0),
                 isCommuteDay = true,
-                hasActiveTracking = false
+                hasTrackingToday = false
             )
             assertFalse(result)
         }
@@ -85,7 +85,7 @@ class CommuteReminderLogicTest {
                 currentTime = LocalTime.of(12, 0),
                 reminderTime = LocalTime.of(10, 0),
                 isCommuteDay = false,
-                hasActiveTracking = false
+                hasTrackingToday = false
             )
             assertFalse(result)
         }
@@ -101,7 +101,7 @@ class CommuteReminderLogicTest {
             val result = CommuteReminderLogic.shouldShowLateTrackingReminder(
                 currentTime = LocalTime.of(21, 30),
                 cutoffTime = LocalTime.of(21, 0),
-                hasActiveTracking = true
+                hasTrackingToday = true
             )
             assertTrue(result)
         }
@@ -111,7 +111,7 @@ class CommuteReminderLogicTest {
             val result = CommuteReminderLogic.shouldShowLateTrackingReminder(
                 currentTime = LocalTime.of(21, 0),
                 cutoffTime = LocalTime.of(21, 0),
-                hasActiveTracking = true
+                hasTrackingToday = true
             )
             assertTrue(result)
         }
@@ -121,7 +121,7 @@ class CommuteReminderLogicTest {
             val result = CommuteReminderLogic.shouldShowLateTrackingReminder(
                 currentTime = LocalTime.of(21, 30),
                 cutoffTime = LocalTime.of(21, 0),
-                hasActiveTracking = false
+                hasTrackingToday = false
             )
             assertFalse(result)
         }
@@ -131,7 +131,7 @@ class CommuteReminderLogicTest {
             val result = CommuteReminderLogic.shouldShowLateTrackingReminder(
                 currentTime = LocalTime.of(20, 30),
                 cutoffTime = LocalTime.of(21, 0),
-                hasActiveTracking = true
+                hasTrackingToday = true
             )
             assertFalse(result)
         }
@@ -141,7 +141,7 @@ class CommuteReminderLogicTest {
             val result = CommuteReminderLogic.shouldShowLateTrackingReminder(
                 currentTime = LocalTime.of(20, 59),
                 cutoffTime = LocalTime.of(21, 0),
-                hasActiveTracking = true
+                hasTrackingToday = true
             )
             assertFalse(result)
         }
@@ -151,7 +151,7 @@ class CommuteReminderLogicTest {
             val result = CommuteReminderLogic.shouldShowLateTrackingReminder(
                 currentTime = LocalTime.of(20, 0),
                 cutoffTime = LocalTime.of(21, 0),
-                hasActiveTracking = false
+                hasTrackingToday = false
             )
             assertFalse(result)
         }

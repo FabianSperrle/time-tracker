@@ -39,12 +39,13 @@ class CommuteReminderWorker @AssistedInject constructor(
         val currentTime = LocalTime.now()
         val isCommuteDay = commuteDayChecker.isCommuteDay()
         val hasActiveTracking = trackingRepository.getActiveEntry() != null
+        val hasTrackingToday = hasActiveTracking || trackingRepository.hasAnyTrackingToday()
 
         // Check "no tracking started" reminder
         if (CommuteReminderLogic.shouldShowNoTrackingReminder(
                 currentTime = currentTime,
                 isCommuteDay = isCommuteDay,
-                hasActiveTracking = hasActiveTracking
+                hasTrackingToday = hasTrackingToday
             )) {
             showNoTrackingNotification()
         }
@@ -52,7 +53,7 @@ class CommuteReminderWorker @AssistedInject constructor(
         // Check "forgot to stop tracking" reminder
         if (CommuteReminderLogic.shouldShowLateTrackingReminder(
                 currentTime = currentTime,
-                hasActiveTracking = hasActiveTracking
+                hasTrackingToday = hasActiveTracking
             )) {
             showLateTrackingNotification()
         }

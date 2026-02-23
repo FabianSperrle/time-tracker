@@ -43,6 +43,10 @@ class TrackingRepository @Inject constructor(
         return trackingDao.hasCompletedOfficeCommute(LocalDate.now())
     }
 
+    suspend fun hasAnyTrackingToday(): Boolean {
+        return trackingDao.hasAnyEntryForDate(LocalDate.now())
+    }
+
     suspend fun startTracking(type: TrackingType, autoDetected: Boolean): TrackingEntry {
         val entry = TrackingEntry(
             date = LocalDate.now(),

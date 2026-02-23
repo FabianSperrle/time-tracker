@@ -44,6 +44,9 @@ interface TrackingDao {
     @Query("SELECT EXISTS(SELECT 1 FROM tracking_entries WHERE date = :date AND type = 'COMMUTE_OFFICE' AND endTime IS NOT NULL)")
     suspend fun hasCompletedOfficeCommute(date: LocalDate): Boolean
 
+    @Query("SELECT EXISTS(SELECT 1 FROM tracking_entries WHERE date = :date)")
+    suspend fun hasAnyEntryForDate(date: LocalDate): Boolean
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entry: TrackingEntry)
 

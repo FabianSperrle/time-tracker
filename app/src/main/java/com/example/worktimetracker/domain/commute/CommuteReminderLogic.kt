@@ -20,15 +20,15 @@ object CommuteReminderLogic {
      * Shows reminder when:
      * - It is a commute day
      * - Current time is past the reminder time
-     * - No tracking session is currently active
+     * - No tracking session has started today (active or completed)
      */
     fun shouldShowNoTrackingReminder(
         currentTime: LocalTime,
         reminderTime: LocalTime = DEFAULT_NO_TRACKING_REMINDER_TIME,
         isCommuteDay: Boolean,
-        hasActiveTracking: Boolean
+        hasTrackingToday: Boolean
     ): Boolean {
-        return isCommuteDay && !currentTime.isBefore(reminderTime) && !hasActiveTracking
+        return isCommuteDay && !currentTime.isBefore(reminderTime) && !hasTrackingToday
     }
 
     /**
@@ -41,8 +41,8 @@ object CommuteReminderLogic {
     fun shouldShowLateTrackingReminder(
         currentTime: LocalTime,
         cutoffTime: LocalTime = DEFAULT_LATE_TRACKING_CUTOFF,
-        hasActiveTracking: Boolean
+        hasTrackingToday: Boolean
     ): Boolean {
-        return hasActiveTracking && !currentTime.isBefore(cutoffTime)
+        return hasTrackingToday && !currentTime.isBefore(cutoffTime)
     }
 }

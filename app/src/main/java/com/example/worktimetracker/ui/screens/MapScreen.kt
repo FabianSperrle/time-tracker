@@ -21,6 +21,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.launch
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -60,8 +62,27 @@ fun MapScreen(
     var cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(
             LatLng(48.1351, 11.5820), // Default: Munich
-            12f
+            14f
         )
+    }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(Unit) {
+        try {
+            val client = com.google.android.gms.location.LocationServices
+                .getFusedLocationProviderClient(context)
+            val location = suspendCoroutine { cont ->
+                client.lastLocation
+                    .addOnSuccessListener { loc -> cont.resume(loc) }
+                    .addOnFailureListener { cont.resume(null) }
+            }
+            location?.let {
+                cameraPositionState.animate(
+                    com.google.android.gms.maps.CameraUpdateFactory
+                        .newLatLngZoom(LatLng(it.latitude, it.longitude), 14f)
+                )
+            }
+        } catch (_: SecurityException) { /* permission not granted, keep default */ }
     }
 
     // Handle camera target updates

@@ -266,6 +266,9 @@ class TrackingStateMachine @Inject constructor(
 
     private suspend fun handleManualStart(event: TrackingEvent.ManualStart): TrackingState? {
         val entry = repository.startTracking(event.type, autoDetected = false)
+        if (event.type == TrackingType.COMMUTE_OFFICE) {
+            commutePhaseTracker.startCommute()
+        }
         return TrackingState.Tracking(
             entryId = entry.id,
             type = entry.type,
@@ -439,6 +442,9 @@ class TrackingStateMachine @Inject constructor(
                 // Validate that the entry still exists
                 val activeEntry = repository.getActiveEntry()
                 if (activeEntry != null && activeEntry.id == savedState.entryId) {
+                    if (savedState.type == TrackingType.COMMUTE_OFFICE) {
+                        commutePhaseTracker.startCommute()
+                    }
                     savedState
                 } else {
                     // Entry doesn't exist or is different - reset to Idle
@@ -449,6 +455,9 @@ class TrackingStateMachine @Inject constructor(
                 // Validate that the entry still exists
                 val activeEntry = repository.getActiveEntry()
                 if (activeEntry != null && activeEntry.id == savedState.entryId) {
+                    if (savedState.type == TrackingType.COMMUTE_OFFICE) {
+                        commutePhaseTracker.startCommute()
+                    }
                     savedState
                 } else {
                     // Entry doesn't exist - reset to Idle
