@@ -132,29 +132,48 @@ class TrackingStateMachine @Inject constructor(
 
     private suspend fun handleGeofenceEnteredWhileIdle(
         event: TrackingEvent.GeofenceEntered
+    ): TrackingState? = when (event.zoneType) {
+        ZoneType.HOME_STATION   -> handleHomeStationEnteredWhileIdle(event)
+        ZoneType.OFFICE_STATION -> handleOfficeStationEnteredWhileIdle(event)
+        ZoneType.OFFICE         -> handleOfficeEnteredWhileIdle(event)
+    }
+
+    private suspend fun handleHomeStationEnteredWhileIdle(
+        event: TrackingEvent.GeofenceEntered
     ): TrackingState? {
-        if (event.zoneType != ZoneType.HOME_STATION) {
-            return null
-        }
-
-        // Check if it's a commute day
-        if (!commuteDayChecker.isCommuteDay(event.timestamp.toLocalDate())) {
-            return null
-        }
-
-        // Check if it's in the outbound window
-        if (!commuteDayChecker.isInOutboundWindow(event.timestamp.toLocalTime())) {
-            return null
-        }
-
-        // Start commute tracking
+        if (!commuteDayChecker.isCommuteDay(event.timestamp.toLocalDate())) return null
+        if (!commuteDayChecker.isInOutboundWindow(event.timestamp.toLocalTime())) return null
         val entry = repository.startTracking(TrackingType.COMMUTE_OFFICE, autoDetected = true)
         commutePhaseTracker.startCommute()
-        return TrackingState.Tracking(
-            entryId = entry.id,
-            type = entry.type,
-            startTime = entry.startTime
+        return TrackingState.Tracking(entryId = entry.id, type = entry.type, startTime = entry.startTime)
+    }
+
+    private suspend fun handleOfficeStationEnteredWhileIdle(
+        event: TrackingEvent.GeofenceEntered
+    ): TrackingState? {
+        if (!commuteDayChecker.isCommuteDay(event.timestamp.toLocalDate())) return null
+        if (!commuteDayChecker.isInOutboundWindow(event.timestamp.toLocalTime())) return null
+        val entry = repository.startTracking(
+            type = TrackingType.COMMUTE_OFFICE,
+            autoDetected = true,
+            notes = "Heimbahnhof-Zone nicht erkannt – bitte Startzeit prüfen und ggf. manuell korrigieren."
         )
+        commutePhaseTracker.startCommute()
+        return TrackingState.Tracking(entryId = entry.id, type = entry.type, startTime = entry.startTime)
+    }
+
+    private suspend fun handleOfficeEnteredWhileIdle(
+        event: TrackingEvent.GeofenceEntered
+    ): TrackingState? {
+        if (!commuteDayChecker.isCommuteDay(event.timestamp.toLocalDate())) return null
+        val entry = repository.startTracking(
+            type = TrackingType.COMMUTE_OFFICE,
+            autoDetected = true,
+            notes = "Heimbahnhof- und Bürobahnhof-Zone nicht erkannt – bitte Startzeit prüfen und ggf. manuell korrigieren."
+        )
+        commutePhaseTracker.startCommute()
+        commutePhaseTracker.enterOffice()
+        return TrackingState.Tracking(entryId = entry.id, type = entry.type, startTime = entry.startTime)
     }
 
     private suspend fun handleGeofenceEnteredWhileTracking(

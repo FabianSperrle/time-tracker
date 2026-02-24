@@ -127,6 +127,163 @@ class TrackingStateMachineTest {
         }
     }
 
+    // ========== IDLE Fallback: OFFICE_STATION while Idle ==========
+
+    @Test
+    fun `IDLE to TRACKING on GeofenceEntered OFFICE_STATION on commute day within outbound window`() = runTest {
+        val testTime = LocalDateTime.of(2026, 2, 9, 8, 15) // Monday, within outbound window
+        val event = TrackingEvent.GeofenceEntered(ZoneType.OFFICE_STATION, testTime)
+
+        val createdEntry = TrackingEntry(
+            id = "entry-fallback-1",
+            date = testTime.toLocalDate(),
+            type = TrackingType.COMMUTE_OFFICE,
+            startTime = testTime,
+            endTime = null,
+            autoDetected = true,
+            notes = "Heimbahnhof-Zone nicht erkannt – bitte Startzeit prüfen und ggf. manuell korrigieren."
+        )
+        coEvery {
+            repository.startTracking(
+                type = TrackingType.COMMUTE_OFFICE,
+                autoDetected = true,
+                notes = "Heimbahnhof-Zone nicht erkannt – bitte Startzeit prüfen und ggf. manuell korrigieren."
+            )
+        } returns createdEntry
+
+        stateMachine.state.test {
+            assertEquals(TrackingState.Idle, awaitItem())
+
+            stateMachine.processEvent(event)
+
+            val newState = awaitItem()
+            assertTrue(newState is TrackingState.Tracking)
+            assertEquals("entry-fallback-1", (newState as TrackingState.Tracking).entryId)
+            assertEquals(TrackingType.COMMUTE_OFFICE, newState.type)
+
+            assertEquals(CommutePhase.OUTBOUND, commutePhaseTracker.currentPhase.value)
+        }
+    }
+
+    @Test
+    fun `IDLE ignores GeofenceEntered OFFICE_STATION outside outbound window`() = runTest {
+        val testTime = LocalDateTime.of(2026, 2, 9, 11, 0) // Monday, outside outbound window
+        val event = TrackingEvent.GeofenceEntered(ZoneType.OFFICE_STATION, testTime)
+
+        stateMachine.state.test {
+            assertEquals(TrackingState.Idle, awaitItem())
+
+            stateMachine.processEvent(event)
+
+            expectNoEvents()
+            coVerify(exactly = 0) { repository.startTracking(any(), any()) }
+        }
+    }
+
+    @Test
+    fun `IDLE ignores GeofenceEntered OFFICE_STATION on non-commute day`() = runTest {
+        val testTime = LocalDateTime.of(2026, 2, 14, 8, 15) // Saturday
+        val event = TrackingEvent.GeofenceEntered(ZoneType.OFFICE_STATION, testTime)
+
+        stateMachine.state.test {
+            assertEquals(TrackingState.Idle, awaitItem())
+
+            stateMachine.processEvent(event)
+
+            expectNoEvents()
+            coVerify(exactly = 0) { repository.startTracking(any(), any()) }
+        }
+    }
+
+    // ========== IDLE Fallback: OFFICE while Idle ==========
+
+    @Test
+    fun `IDLE to TRACKING on GeofenceEntered OFFICE on commute day`() = runTest {
+        val testTime = LocalDateTime.of(2026, 2, 9, 8, 30) // Monday
+        val event = TrackingEvent.GeofenceEntered(ZoneType.OFFICE, testTime)
+
+        val createdEntry = TrackingEntry(
+            id = "entry-fallback-2",
+            date = testTime.toLocalDate(),
+            type = TrackingType.COMMUTE_OFFICE,
+            startTime = testTime,
+            endTime = null,
+            autoDetected = true,
+            notes = "Heimbahnhof- und Bürobahnhof-Zone nicht erkannt – bitte Startzeit prüfen und ggf. manuell korrigieren."
+        )
+        coEvery {
+            repository.startTracking(
+                type = TrackingType.COMMUTE_OFFICE,
+                autoDetected = true,
+                notes = "Heimbahnhof- und Bürobahnhof-Zone nicht erkannt – bitte Startzeit prüfen und ggf. manuell korrigieren."
+            )
+        } returns createdEntry
+
+        stateMachine.state.test {
+            assertEquals(TrackingState.Idle, awaitItem())
+
+            stateMachine.processEvent(event)
+
+            val newState = awaitItem()
+            assertTrue(newState is TrackingState.Tracking)
+            assertEquals("entry-fallback-2", (newState as TrackingState.Tracking).entryId)
+            assertEquals(TrackingType.COMMUTE_OFFICE, newState.type)
+
+            assertEquals(CommutePhase.IN_OFFICE, commutePhaseTracker.currentPhase.value)
+        }
+    }
+
+    @Test
+    fun `IDLE ignores GeofenceEntered OFFICE on non-commute day`() = runTest {
+        val testTime = LocalDateTime.of(2026, 2, 14, 8, 30) // Saturday
+        val event = TrackingEvent.GeofenceEntered(ZoneType.OFFICE, testTime)
+
+        stateMachine.state.test {
+            assertEquals(TrackingState.Idle, awaitItem())
+
+            stateMachine.processEvent(event)
+
+            expectNoEvents()
+            coVerify(exactly = 0) { repository.startTracking(any(), any()) }
+        }
+    }
+
+    @Test
+    fun `IDLE to TRACKING on GeofenceEntered OFFICE on commute day outside outbound window`() = runTest {
+        // OFFICE fallback has no outbound window check – arrival time is irrelevant
+        val testTime = LocalDateTime.of(2026, 2, 9, 11, 0) // Monday, outside outbound window
+        val event = TrackingEvent.GeofenceEntered(ZoneType.OFFICE, testTime)
+
+        val createdEntry = TrackingEntry(
+            id = "entry-fallback-3",
+            date = testTime.toLocalDate(),
+            type = TrackingType.COMMUTE_OFFICE,
+            startTime = testTime,
+            endTime = null,
+            autoDetected = true,
+            notes = "Heimbahnhof- und Bürobahnhof-Zone nicht erkannt – bitte Startzeit prüfen und ggf. manuell korrigieren."
+        )
+        coEvery {
+            repository.startTracking(
+                type = TrackingType.COMMUTE_OFFICE,
+                autoDetected = true,
+                notes = "Heimbahnhof- und Bürobahnhof-Zone nicht erkannt – bitte Startzeit prüfen und ggf. manuell korrigieren."
+            )
+        } returns createdEntry
+
+        stateMachine.state.test {
+            assertEquals(TrackingState.Idle, awaitItem())
+
+            stateMachine.processEvent(event)
+
+            val newState = awaitItem()
+            assertTrue(newState is TrackingState.Tracking)
+            assertEquals("entry-fallback-3", (newState as TrackingState.Tracking).entryId)
+
+            assertEquals(CommutePhase.IN_OFFICE, commutePhaseTracker.currentPhase.value)
+        }
+    }
+
     @Test
     fun `IDLE to TRACKING on BeaconDetected during work time window`() = runTest {
         // Arrange: Monday, 09:00

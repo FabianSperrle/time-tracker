@@ -47,14 +47,19 @@ class TrackingRepository @Inject constructor(
         return trackingDao.hasAnyEntryForDate(LocalDate.now())
     }
 
-    suspend fun startTracking(type: TrackingType, autoDetected: Boolean): TrackingEntry {
+    suspend fun startTracking(
+        type: TrackingType,
+        autoDetected: Boolean,
+        notes: String? = null
+    ): TrackingEntry {
         val entry = TrackingEntry(
             date = LocalDate.now(),
             type = type,
             startTime = LocalDateTime.now(),
             endTime = null,
             autoDetected = autoDetected,
-            confirmed = false
+            confirmed = false,
+            notes = notes
         )
         trackingDao.insert(entry)
         return entry
